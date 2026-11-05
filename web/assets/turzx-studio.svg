@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <title>TURZX Studio — USB display</title>
+  <defs>
+    <linearGradient id="body" x1="40" y1="20" x2="215" y2="240" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#356450"/>
+      <stop offset="1" stop-color="#183d2b"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="64" y1="68" x2="184" y2="168" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#142c25"/>
+      <stop offset="1" stop-color="#101c19"/>
+    </linearGradient>
+  </defs>
+  <rect x="12" y="12" width="232" height="232" rx="52" fill="url(#body)"/>
+  <rect x="13" y="13" width="230" height="230" rx="51" fill="none" stroke="#ffffff" stroke-opacity=".1" stroke-width="2"/>
+  <path d="M119 179h18v24h-18z" fill="#dfe8da"/>
+  <path d="M99 207h58" fill="none" stroke="#edf3ed" stroke-width="10" stroke-linecap="round"/>
+  <rect x="35" y="53" width="186" height="130" rx="20" fill="#091a13" fill-opacity=".3"/>
+  <rect x="35" y="47" width="186" height="130" rx="20" fill="#edf3ed"/>
+  <rect x="44" y="56" width="168" height="112" rx="12" fill="url(#glass)"/>
+  <path d="M62 139h26l20-37 27 45 25-61 19 36h15" fill="none" stroke="#b6e7bb" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="194" cy="72" r="4" fill="#edf3ed" fill-opacity=".65"/>
+</svg>

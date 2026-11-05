@@ -1,0 +1,28 @@
+# Local runtime, device evidence and research notes
+/runtime/
+/research/
+/previews/
+/设备核查与可能性.md
+/PRODUCT.md
+/.impeccable/
+/.codex/
+
+# Environments and caches
+.venv/
+venv/
+node_modules/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Machine-local secrets and launchers
+.env
+.env.*
+!.env.example
+*.log
+*.pid
+*.lnk
+.DS_Store
+Thumbs.db
+desktop.ini

@@ -1,0 +1,412 @@
+"""Local-only TURZX Studio bridge. No firmware or persistent screen settings are written."""
+from __future__ import annotations
+
+import argparse
+import copy
+import io
+import json
+import logging
+import math
+import mimetypes
+import os
+from pathlib import Path
+import secrets
+import shutil
+import subprocess
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import unquote, urlsplit
+
+from PIL import Image
+from telemetry import Telemetry
+from turzx_usb import TurzxWinUSB
+
+ROOT = Path(__file__).resolve().parent
+WEB = ROOT / "web"
+RUNTIME = ROOT / "runtime"
+PAGES = ("system", "network", "clock", "focus", "ambient", "media", "guide", "calibrate")
+LOG = logging.getLogger("turzx")
+
+
+class SessionPaused(Exception):
+    """Normal cancellation, not a device error."""
+
+
+class Studio:
+    def __init__(self, port: int):
+        self.port = port
+        self.state_lock = threading.RLock()
+        self.io_lock = threading.RLock()
+        self.lifecycle_lock = threading.RLock()
+        self.device = None
+        self.renderer = None
+        self.renderer_log = None
+        self.token = secrets.token_urlsafe(32)
+        self.focus_deadline = None
+        self.last_page_at = time.monotonic()
+        self.session_started = None
+        self.session_id = 0
+        self.stopping = threading.Event()
+        self.metrics = Telemetry()
+        self.state = {
+            "page": "system", "rotation": 270, "fps": 2, "auto": False,
+            "interval": 20, "streaming": False, "connected": False,
+            "error": None, "brightness": None,
+            "stats": {"frames": 0, "last_ms": None, "bytes": 0,
+                      "effective_fps": 0, "last_ack": None},
+            "device": {"name": "TURZX 5.2", "width": 1280, "height": 720,
+                       "vid": "1CBE", "pid": "0050"},
+            "focus": {"duration": 1500, "remaining": 1500, "running": False},
+            "note": "把注意力留给真正重要的事。",
+        }
+        self.clock = threading.Thread(target=self._clock, name="studio-clock", daemon=True)
+        self.clock.start()
+
+    def snapshot(self):
+        with self.state_lock:
+            result = copy.deepcopy(self.state)
+            if self.focus_deadline is not None:
+                result["focus"]["remaining"] = max(0, math.ceil(self.focus_deadline-time.monotonic()))
+            return result
+
+    def _clock(self):
+        while not self.stopping.wait(0.2):
+            now = time.monotonic()
+            with self.state_lock:
+                if self.focus_deadline is not None and now >= self.focus_deadline:
+                    self.focus_deadline = None
+                    self.state["focus"].update(remaining=0, running=False)
+                if self.state["auto"] and now-self.last_page_at >= self.state["interval"]:
+                    i = PAGES.index(self.state["page"])
+                    self.state["page"] = PAGES[(i+1) % len(PAGES)]
+                    self.last_page_at = now
+            renderer = self.renderer
+            generation = self.session_id
+            if renderer and renderer.poll() is not None and renderer is self.renderer and self.snapshot()["streaming"]:
+                self.fail(f"页面渲染进程已退出（{renderer.returncode}），请查看 runtime/renderer.log 后重新开始。", generation)
+
+    def start(self):
+        with self.lifecycle_lock:
+            if self.snapshot()["streaming"]:
+                return
+            self.stop()
+            with self.state_lock:
+                self.session_id += 1
+                self.token = secrets.token_urlsafe(32)
+            try:
+                with self.io_lock:
+                    self.device = TurzxWinUSB()
+                    info = self.device.descriptor_info()
+                    self.device.sync()
+                (RUNTIME / "usb-descriptors.json").write_text(
+                    json.dumps(info, ensure_ascii=False, indent=2), encoding="utf-8")
+                node = shutil.which("node")
+                if not node:
+                    raise RuntimeError("找不到 Node.js，无法渲染页面。")
+                env = os.environ.copy()
+                env["TURZX_RENDER_TOKEN"] = self.token
+                self.renderer_log = (RUNTIME / "renderer.log").open("a", encoding="utf-8")
+                with self.state_lock:
+                    self.state.update(streaming=True, connected=True, error=None)
+                    self.state["stats"] = {"frames": 0, "last_ms": None, "bytes": 0,
+                                           "effective_fps": 0, "last_ack": None}
+                    self.session_started = time.monotonic()
+                self.renderer = subprocess.Popen(
+                    [node, str(ROOT / "renderer.cjs"), f"http://127.0.0.1:{self.port}"],
+                    cwd=ROOT, env=env, stdout=self.renderer_log, stderr=subprocess.STDOUT,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                )
+                LOG.info("Started display session; renderer pid=%s", self.renderer.pid)
+            except Exception as exc:
+                self.stop()
+                with self.state_lock:
+                    self.state["error"] = str(exc)
+                raise
+
+    def stop(self, expected_session=None):
+        with self.lifecycle_lock:
+            if expected_session is not None and expected_session != self.session_id:
+                return
+            with self.state_lock:
+                self.state["streaming"] = False
+            proc = self.renderer
+            if proc:
+                # Renderer polls state and exits, closing its own Chromium first.
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    # Terminate only our own process tree, never unrelated browsers.
+                    import psutil
+                    try:
+                        parent = psutil.Process(proc.pid)
+                        children = parent.children(recursive=True)
+                        for child in reversed(children):
+                            try:
+                                child.terminate()
+                            except psutil.Error:
+                                pass
+                        parent.terminate()
+                        psutil.wait_procs(children+[parent], timeout=2)
+                    except psutil.Error:
+                        pass
+                self.renderer = None
+            if self.renderer_log:
+                self.renderer_log.close()
+                self.renderer_log = None
+            with self.io_lock:
+                if self.device:
+                    self.device.close()
+                    self.device = None
+            with self.state_lock:
+                self.state["connected"] = False
+            LOG.info("Display session stopped; last frame retained")
+
+    def fail(self, message, expected_session):
+        with self.state_lock:
+            if expected_session != self.session_id or not self.state["streaming"]:
+                return
+            self.state.update(error=message, streaming=False)
+        LOG.error("Session failure: %s", message)
+        # Never wait for the renderer from a request it is waiting on.
+        threading.Thread(target=self.stop, args=(expected_session,), daemon=True).start()
+
+    def control(self, changes):
+        if not isinstance(changes, dict):
+            raise ValueError("请求必须为 JSON 对象。")
+        allowed = {"page", "rotation", "fps", "auto", "interval", "note", "brightness", "action", "focus_duration"}
+        if set(changes)-allowed:
+            raise ValueError("存在不支持的设置项。")
+        action = changes.get("action")
+        if action not in (None, "start", "stop", "focus_start", "focus_pause", "focus_reset", "shutdown"):
+            raise ValueError("不支持的操作。")
+        for key, value in changes.items():
+            if key == "page" and value not in PAGES:
+                raise ValueError("未知页面。")
+            if key == "rotation" and (type(value) is not int or value not in (0, 90, 180, 270)):
+                raise ValueError("方向应为 0/90/180/270。")
+            if key == "fps" and (type(value) is not int or value not in (1, 2, 5, 10)):
+                raise ValueError("发送帧率应为 1/2/5/10。")
+            if key == "auto" and type(value) is not bool:
+                raise ValueError("轮播设置应为布尔值。")
+            if key in ("interval", "brightness", "focus_duration"):
+                bounds = {"interval": (5, 120), "brightness": (0, 100), "focus_duration": (60, 10800)}[key]
+                if type(value) is not int or not bounds[0] <= value <= bounds[1]:
+                    raise ValueError(f"{key} 超出范围 {bounds}。")
+            if key == "note" and (not isinstance(value, str) or len(value) > 160):
+                raise ValueError("便签最长 160 字。")
+        if "brightness" in changes:
+            with self.io_lock:
+                if not self.device:
+                    raise ValueError("请先开始推送，再调整亮度。")
+                self.device.brightness(changes["brightness"])
+        with self.state_lock:
+            for key in ("page", "rotation", "fps", "auto", "interval", "note", "brightness"):
+                if key in changes:
+                    self.state[key] = changes[key]
+            if "page" in changes or "auto" in changes:
+                self.last_page_at = time.monotonic()
+            if "focus_duration" in changes:
+                self.state["focus"].update(duration=changes["focus_duration"], remaining=changes["focus_duration"], running=False)
+                self.focus_deadline = None
+            f = self.state["focus"]
+            if action == "focus_start" and not f["running"]:
+                if f["remaining"] <= 0:
+                    f["remaining"] = f["duration"]
+                f["running"] = True
+                self.focus_deadline = time.monotonic()+f["remaining"]
+            elif action == "focus_pause":
+                if self.focus_deadline is not None:
+                    f["remaining"] = max(0, math.ceil(self.focus_deadline-time.monotonic()))
+                f["running"] = False
+                self.focus_deadline = None
+            elif action == "focus_reset":
+                f.update(remaining=f["duration"], running=False)
+                self.focus_deadline = None
+        if action == "start":
+            self.start()
+        elif action == "stop":
+            self.stop()
+        return self.snapshot()
+
+    def frame(self, data, rotation, expected_session):
+        started = time.perf_counter()
+        if expected_session != self.session_id or not self.snapshot()["streaming"]:
+            raise SessionPaused("推送已暂停。")
+        image = Image.open(io.BytesIO(data))
+        expected = (1280, 720) if rotation in (90, 270) else (720, 1280)
+        if image.size != expected:
+            raise ValueError(f"画面尺寸 {image.size} 与方向 {rotation} 不匹配。")
+        # TURZX's PNG overlay decoder expects 4-channel PNGs. RGB PNGs can
+        # ACK successfully yet show repeated strips over the factory image.
+        # Our pages are full frames, so make alpha explicitly opaque.
+        image = image.convert("RGBA")
+        image.putalpha(255)
+        if rotation:
+            image = image.rotate(rotation, expand=True)
+        stream = io.BytesIO()
+        image.save(stream, "PNG", compress_level=1)
+        payload = stream.getvalue()
+        kind = "png"
+        if len(payload) > 1024*1024:
+            stream = io.BytesIO()
+            image.save(stream, "PNG", compress_level=9)
+            payload = stream.getvalue()
+        if len(payload) > 1024*1024:
+            raise ValueError("RGBA PNG 超过设备单帧 1 MiB 限制，请降低画面复杂度。")
+        with self.io_lock:
+            if expected_session != self.session_id or not self.device or not self.snapshot()["streaming"]:
+                raise SessionPaused("推送已暂停。")
+            usb_started = time.perf_counter()
+            if kind == "png":
+                reply = self.device.draw_png(payload)
+            else:
+                reply = self.device.draw_jpeg(payload)
+            ms = (time.perf_counter()-usb_started)*1000
+        now = time.time()
+        with self.state_lock:
+            s = self.state["stats"]
+            s["frames"] += 1
+            s["last_ms"] = round(ms, 2)
+            s["bytes"] += len(payload)
+            s["last_ack"] = now
+            s["effective_fps"] = round(s["frames"]/max(.01, time.monotonic()-self.session_started), 2)
+        record = {"time": now, "page": self.snapshot()["page"], "rotation": rotation,
+                  "bytes": len(payload), "usb_ms": round(ms, 3), "format": kind,
+                  "total_ms": round((time.perf_counter()-started)*1000, 3),
+                  "ack_prefix": bytes(reply)[:16].hex()}
+        with (RUNTIME / "frames.jsonl").open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record)+"\n")
+        return {"ok": True, "ms": round(ms, 2), "bytes": len(payload)}
+
+    def close(self):
+        self.stopping.set()
+        self.stop()
+        self.metrics.close()
+
+
+class Handler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
+    def setup(self):
+        super().setup()
+        self.connection.settimeout(15)
+
+    @property
+    def app(self):
+        return self.server.app
+
+    def log_message(self, fmt, *args):
+        if not str(args[0]).startswith(("GET /api/", "POST /api/frame")):
+            LOG.info(fmt, *args)
+
+    def send(self, code, body, content_type="application/json; charset=utf-8"):
+        if not isinstance(body, bytes):
+            body = json.dumps(body, ensure_ascii=False).encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; frame-ancestors 'self'")
+        self.end_headers()
+        try:
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
+    def valid_host(self):
+        return self.headers.get("Host") in (f"127.0.0.1:{self.app.port}", f"localhost:{self.app.port}")
+
+    def do_GET(self):
+        if not self.valid_host():
+            return self.send(403, {"error": "Invalid host"})
+        route = urlsplit(self.path).path
+        if route == "/api/state":
+            return self.send(200, self.app.snapshot())
+        if route == "/api/metrics":
+            return self.send(200, self.app.metrics.snapshot())
+        if route == "/api/info":
+            return self.send(200, json.loads((ROOT / "device-info.json").read_text(encoding="utf-8")))
+        if route.startswith("/api/"):
+            return self.send(404, {"error": "Unknown endpoint"})
+        name = unquote(route).lstrip("/") or "index.html"
+        path = (WEB / name).resolve()
+        if not path.is_relative_to(WEB.resolve()) or not path.is_file():
+            return self.send(404, {"error": "Not found"})
+        mime = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        if mime.startswith("text/") or mime in ("application/javascript", "application/json"):
+            mime += "; charset=utf-8"
+        return self.send(200, path.read_bytes(), mime)
+
+    def do_POST(self):
+        if not self.valid_host():
+            return self.send(403, {"error": "Invalid host"})
+        origin = self.headers.get("Origin")
+        allowed = (f"http://127.0.0.1:{self.app.port}", f"http://localhost:{self.app.port}")
+        if origin is not None and origin not in allowed:
+            return self.send(403, {"error": "仅允许本机同源操作。"})
+        route = urlsplit(self.path).path
+        try:
+            size = int(self.headers.get("Content-Length", "0"))
+            limit = 8*1024*1024 if route == "/api/frame" else 8192
+            if not 0 < size <= limit:
+                raise ValueError("请求内容长度无效。")
+            if route == "/api/frame":
+                with self.app.state_lock:
+                    generation = self.app.session_id
+                    if not secrets.compare_digest(self.headers.get("X-Renderer-Token", ""), self.app.token):
+                        return self.send(403, {"error": "Invalid renderer token"})
+                data = self.rfile.read(size)
+                rotation = int(self.headers.get("X-Frame-Rotation", "270"))
+                if rotation not in (0, 90, 180, 270):
+                    raise ValueError("Invalid frame rotation")
+                try:
+                    return self.send(200, self.app.frame(data, rotation, generation))
+                except SessionPaused as exc:
+                    return self.send(409, {"error": str(exc), "cancelled": True})
+                except Exception as exc:
+                    self.app.fail(str(exc), generation)
+                    return self.send(503, {"error": str(exc)})
+            if route == "/api/control":
+                if not self.headers.get("Content-Type", "").startswith("application/json"):
+                    return self.send(415, {"error": "Expected application/json"})
+                body = json.loads(self.rfile.read(size))
+                state = self.app.control(body)
+                self.send(200, state)
+                if body.get("action") == "shutdown":
+                    threading.Thread(target=self.server.shutdown, daemon=True).start()
+                return
+            return self.send(404, {"error": "Unknown endpoint"})
+        except (ValueError, json.JSONDecodeError) as exc:
+            return self.send(400, {"error": str(exc)})
+        except Exception as exc:
+            LOG.exception("Control failed")
+            return self.send(503, {"error": str(exc)})
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--port", type=int, default=8765)
+    args = parser.parse_args()
+    RUNTIME.mkdir(exist_ok=True)
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s",
+                        handlers=[logging.FileHandler(RUNTIME / "server.log", encoding="utf-8"), logging.StreamHandler()])
+    server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    server.daemon_threads = True
+    app = Studio(args.port)
+    server.app = app
+    (RUNTIME / "server.pid").write_text(str(os.getpid()), encoding="ascii")
+    LOG.info("TURZX Studio http://127.0.0.1:%s (preview only until Start)", args.port)
+    try:
+        server.serve_forever(poll_interval=.2)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        app.close()
+        server.server_close()
+        (RUNTIME / "server.pid").unlink(missing_ok=True)
+
+
+if __name__ == "__main__":
+    main()

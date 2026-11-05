@@ -1,0 +1,8 @@
+{
+  "name": "turzx-studio-local",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local page renderer for the TURZX 5.2-inch USB display",
+  "engines": { "node": ">=18" },
+  "dependencies": { "playwright": "1.62.1" }
+}

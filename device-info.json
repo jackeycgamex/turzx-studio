@@ -1,0 +1,156 @@
+{
+  "checked_at": "2026-11-06",
+  "device": {
+    "name": "图灵 TURZX 5.2 英寸 USB 副屏",
+    "usb_name": "TURZX1.0",
+    "version_identifier": "turzx_0001_0015",
+    "usb_version": "2.0 · High-speed（枚举链路，非实测吞吐）",
+    "endpoints": "Bulk IN 0x81 / OUT 0x01 · 512 B",
+    "vid": "1CBE",
+    "pid": "0050",
+    "width": 1280,
+    "height": 720,
+    "native_width": 720,
+    "native_height": 1280,
+    "driver": "Microsoft WinUSB",
+    "physical_size": "127 × 71 mm（官方系列规格）",
+    "os": "Windows 10 / 11（官方支持）"
+  },
+  "verified_facts": [
+    {
+      "label": "目标设备",
+      "value": "TURZX1.0 · 1CBE:0050",
+      "evidence": "兼容性参考设备的 USB 枚举"
+    },
+    {
+      "label": "型号 / 分辨率",
+      "value": "5.2 英寸 · 1280 × 720",
+      "evidence": "参考样机 PID + 官方目录 + 上游源码交叉核对"
+    },
+    {
+      "label": "传输方式",
+      "value": "WinUSB · 不透明 RGBA PNG",
+      "evidence": "参考样机已人工确认校准图完整且方向正确"
+    },
+    {
+      "label": "参考设备版本",
+      "value": "turzx_0001_0015",
+      "evidence": "参考样机同步响应；其他固件可能不同"
+    },
+    {
+      "label": "本应用显示模式",
+      "value": "WinUSB 图像推送",
+      "evidence": "不自动安装或切换虚拟显示驱动"
+    },
+    {
+      "label": "画面生成",
+      "value": "电脑渲染 HTML，再发送不透明 RGBA PNG",
+      "evidence": "本地项目实现；屏幕不执行网页"
+    }
+  ],
+  "capabilities": [
+    {
+      "id": "image",
+      "name": "自定义图文与看板",
+      "status": "实机确认",
+      "detail": "参考样机经人工对照确认 RGBA 校准图正确；八个页面已完成有限连续发送。"
+    },
+    {
+      "id": "telemetry",
+      "name": "实时硬件监控",
+      "status": "已实现",
+      "detail": "CPU、内存、GPU、显存、本地磁盘及实体网卡；温度和风扇未接入。"
+    },
+    {
+      "id": "time",
+      "name": "时钟 / 专注 / 便签",
+      "status": "已实现",
+      "detail": "本地时间、可暂停倒计时和自定义短句。"
+    },
+    {
+      "id": "art",
+      "name": "生成艺术与动画",
+      "status": "已实现并测传输",
+      "detail": "参考主机上的截图、RGBA PNG 和 USB 传输链路约4.9 fps，不代表所有主机或面板刷新率。"
+    },
+    {
+      "id": "rotation",
+      "name": "横竖方向与轮播",
+      "status": "已实现",
+      "detail": "四向软件旋转、横竖重排、八页定时轮播。"
+    },
+    {
+      "id": "brightness",
+      "name": "亮度调节",
+      "status": "协议支持",
+      "detail": "用户主动调整后发送；不自动改初始亮度，不写入持久设置。"
+    },
+    {
+      "id": "video",
+      "name": "H.264 视频",
+      "status": "待实测",
+      "detail": "公开实现存在视频命令；本次先交付图像帧路径。"
+    },
+    {
+      "id": "desktop",
+      "name": "官方桌面模式",
+      "status": "待实测",
+      "detail": "官网标注支持；本应用未实现此模式，也不把当前USB连接视为HDMI/DP。"
+    },
+    {
+      "id": "offline",
+      "name": "离线播放与存储",
+      "status": "待实测",
+      "detail": "公开协议有存储与播放入口；未写入或删除设备文件。"
+    },
+    {
+      "id": "media",
+      "name": "音乐 / 天气 / 任务状态",
+      "status": "待接入",
+      "detail": "屏幕可以展示，内容需来自播放器、天气或任务API；不伪造数据。"
+    },
+    {
+      "id": "touch",
+      "name": "触控 / 音频",
+      "status": "未确认",
+      "detail": "没有可靠证据；控制操作放在电脑浏览器。"
+    }
+  ],
+  "unknown": [
+    "具体生产批次",
+    "版本字段细分含义",
+    "面板型号与工艺",
+    "亮度nits与色域",
+    "实际功耗",
+    "实际面板刷新率",
+    "触控和音频",
+    "离线播放条件与存储容量"
+  ],
+  "sources": [
+    {
+      "title": "TURZX 官方产品目录",
+      "url": "https://www.turzx.com/"
+    },
+    {
+      "title": "TURZX 5.2 英寸软件下载",
+      "url": "https://www.turzx.com/2025/08/07/52_inch/"
+    },
+    {
+      "title": "Python 上游设备映射",
+      "url": "https://github.com/mathoudebine/turing-smart-screen-python/blob/2b33ab4f00a096916dd6a1174441a53a7ec33b03/library/lcd/lcd_comm_turing_usb.py"
+    },
+    {
+      "title": "上游 3.10.0 发布说明：作者实测支持",
+      "url": "https://github.com/mathoudebine/turing-smart-screen-python/releases/tag/3.10.0"
+    },
+    {
+      "title": "MIT USB 协议参考实现",
+      "url": "https://github.com/usausa/turing-smart-screen/blob/ade6bd871aa22430b0061eed890f2cd191c3d276/LcdDriver.TuringSmartScreen/ScreenDevice.cs"
+    },
+    {
+      "title": "Microsoft WinUSB 官方开发文档",
+      "url": "https://learn.microsoft.com/en-us/windows-hardware/drivers/usbcon/using-winusb-api-to-communicate-with-a-usb-device"
+    }
+  ],
+  "scope": "兼容性参考设备与软件能力说明；不是所有连接设备的实时硬件探测结果。"
+}

@@ -1,0 +1,115 @@
+# TURZX Studio · 图灵副屏工作台
+
+<img src="web/assets/turzx-studio-256.png" alt="TURZX Studio icon" width="96">
+
+**把 USB 副屏变成可切换的实时看板。**
+
+TURZX Studio 是本地运行的 Windows 应用：浏览器负责预览和控制，电脑把页面渲染成不透明 RGBA PNG，再通过现有 WinUSB 驱动发送给图灵副屏。包含八种页面、实时硬件数据、横竖屏重排、自动轮播、专注计时和便签。
+
+A local Windows control panel and page renderer for the TURZX 5.2-inch USB display. Uses Python, Playwright and native WinUSB; no cloud service is required.
+
+![生成氛围页面](docs/images/ambient.png)
+
+## 支持范围
+
+| 项目 | 当前支持 |
+|---|---|
+| 已验证设备 | TURZX 5.2 英寸 USB，`VID:PID 1CBE:0050` |
+| 画布 | 横屏 `1280×720`；设备原生帧 `720×1280` |
+| 系统 | Windows 10 / 11；开发与实机测试使用 Windows 11 |
+| 传输 | Windows 原生 WinUSB，完整 RGBA PNG 帧 |
+| 控制台 | `http://127.0.0.1:8765/`，仅监听本机 |
+
+这是社区项目，与 TURZX 厂商无隶属关系。旧款串口 5 英寸屏和其他 PID 尚未验证，不应直接套用本驱动。本应用不会自动安装驱动、刷固件、写入设备持久设置或配置开机自启动。
+
+## 快速开始
+
+准备 Python 3.10+、Node.js 18+ 和 Google Chrome。设备应已使用 Microsoft WinUSB 驱动。
+
+```powershell
+git clone https://github.com/wanpidan1234-design/turzx-studio.git
+cd turzx-studio
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+npm ci
+.\启动.cmd
+```
+
+启动器优先使用项目的 `.venv\Scripts\python.exe`，否则使用 PATH 中的 Python。已有服务时会复用。也可以在终端运行：
+
+```powershell
+.\.venv\Scripts\python.exe -X utf8 server.py
+```
+
+1. 打开控制台，选择页面并预览，然后点击「开始投屏」。
+2. 默认横屏方向为 270°，实物朝向相反可选 90°；竖放可选 0° 或 180°。
+3. 数据页从 2 fps 开始，动画可尝试 5 fps。实际发送速度与面板刷新率不同。
+4. 「停止」释放 USB，屏幕保留最后一帧。完全退出服务请运行 `停止.cmd`。
+
+选页、计时和便签在服务运行期间保留，退出后恢复默认值。亮度无法读回，初始值标为未知，只有主动调整滑块才发送亮度命令。
+
+## 八种页面
+
+| 页面 | 内容 |
+|---|---|
+| 性能脉搏 | CPU、内存、GPU、显存和本地磁盘 |
+| 网络航道 | 实体网卡的实时收发与历史曲线 |
+| 此时此刻 | 北京时间与东京、伦敦、纽约时间 |
+| 专注空间 | 可暂停倒计时和便签 |
+| 缓慢轨道 | 无外部素材的程序生成动画 |
+| 音乐一隅 | 媒体数据源尚未接入时的明确空态 |
+| 更多可能 | 已实现、待接入、待验证能力说明 |
+| 显示校准 | 四角、色条、灰阶、字号与圆形测试 |
+
+均支持横竖重排。控制发生在电脑浏览器，不假设屏幕具备触控。
+
+## 数据口径
+
+- CPU、内存、实体网卡约每秒采集；固定本地磁盘约每 30 秒采集，排除网络映射盘。
+- GPU 使用 DXGI 匹配适配器，再采集对应 PDH 计数器；总显存采用 64 位字段，避免 WMI 的 4 GB 截断。
+- 温度、风扇、功耗和实时 CPU 频率未接入时显示缺失，不使用随机数或零代替。
+- 容量为 GiB，速率为 B/s、KiB/s、MiB/s。网卡连接不等于互联网服务可达。
+
+## PNG 格式约束
+
+参考设备上，**RGB PNG 虽收到成功 ACK，却出现重复条带和旧背景。** 当前发送路径强制使用 `720×1280`、alpha=255 的 **RGBA PNG（color type 6）**。修复后校准图经人工对照确认完整且方向正确；驱动会拒绝 RGB PNG。
+
+图片上限为 1 MiB，超限不会静默切换到另一个显示层。有限测试中，八页巡回约 2 fps，动画链路约 4.9 fps；这些结果不是面板刷新上限。详见[硬件、协议与实测说明](docs/hardware-and-protocol.md)。
+
+## 开发与验证
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+.\.venv\Scripts\python.exe -m py_compile server.py telemetry.py turzx_usb.py
+node --check renderer.cjs
+node --check web/studio.js
+node --check web/display.js
+```
+
+格式测试不需要 USB。硬件更改应先发送一张校准图并目视确认，再进行有限时长的连续测试。
+
+```text
+web/                 控制台、展示页、图标和自托管字体
+server.py            本地服务、USB 所有权、计时和进程生命周期
+renderer.cjs         独立无头 Chrome 渲染
+turzx_usb.py         ctypes WinUSB 与图像协议
+telemetry.py         psutil / DXGI / PDH 遥测
+tests/               无硬件格式回归测试
+docs/                公开研究与示例截图
+runtime/             本地生成的日志和描述符，不进入 Git
+```
+
+图标提供 SVG 和 16–256 px 多尺寸 ICO，位于 `web/assets/`。渲染器优先加载项目的 Playwright，也兼容 Codex 已有的捆绑运行时。
+
+## 边界与后续方向
+
+H.264 直传、离线播放、官方桌面模式及播放器、天气、训练任务、智能家居数据源仍需单独集成或验证。当前 USB 图像模式不是 Windows 原生扩展显示器。触控、音频、面板型号、实际功耗和亮度 nits 尚未确认。
+
+若设备被其他程序占用，停止另一控制软件后手动重连；本应用不会结束未知进程。
+
+## 资料与第三方许可
+
+- [TURZX 官方目录](https://www.turzx.com/)及[5.2 英寸软件下载页](https://www.turzx.com/2025/08/07/52_inch/)。
+- [turing-smart-screen-python](https://github.com/mathoudebine/turing-smart-screen-python)：型号与兼容性资料；其 GPL 源码未打包进本项目。
+- [usausa/turing-smart-screen](https://github.com/usausa/turing-smart-screen)：MIT 协议参考，许可见 [THIRD_PARTY_LICENSES.txt](THIRD_PARTY_LICENSES.txt)。
+- Manrope 字体：SIL OFL 1.1，见 [OFL-Manrope.txt](web/fonts/OFL-Manrope.txt)。

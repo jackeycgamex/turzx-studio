@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <title>TURZX Studio</title>
+  <rect x="0" y="0" width="16" height="16" rx="3.5" fill="#2c5643"/>
+  <rect x="2" y="3" width="12" height="8" rx="1.5" fill="#edf3ed"/>
+  <rect x="3" y="4" width="10" height="6" rx=".5" fill="#142c25"/>
+  <path d="M4 8h2l1-2 2 3 1.5-3 1.5 1" fill="none" stroke="#b6e7bb" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M8 11v2M6 13h4" fill="none" stroke="#edf3ed" stroke-width="1.5" stroke-linecap="round"/>
+</svg>
