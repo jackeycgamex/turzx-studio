@@ -23,6 +23,12 @@ from chatgpt_account import ChatGPTAccountReader, ChatGPTSourceError
 
 POLL_SECONDS = 60
 STALE_SECONDS = 180
+WEB_SOURCES = (
+    ("chatgpt_feature_limits", "ChatGPT 功能额度", 60, 180, "read_limits"),
+    ("chatgpt_voice", "ChatGPT 语音状态", 60, 180, "read_voice"),
+    ("billing", "ChatGPT 订阅", 1800, 3600, "read_billing"),
+    ("plan_pricing", "官方美元套餐标价", 1800, 3600, "read_pricing"),
+)
 
 
 class SourceError(Exception):
@@ -261,8 +267,8 @@ class SubscriptionMonitor:
                      "observed_at": None, "account_observed_at": None, "error": None,
                      "refreshing": False, "poll_seconds": POLL_SECONDS, "stale_seconds": STALE_SECONDS,
                      "source": "Codex app-server · OpenAI",
-                     "billing": self._empty_source("ChatGPT 订阅", 1800, 3600),
-                     "chatgpt_feature_limits": self._empty_source("ChatGPT 功能额度", 60, 180)}
+                     **{field: self._empty_source(name, interval, stale)
+                        for field, name, interval, stale, _ in WEB_SOURCES}}
         self.worker = None
         if autostart:
             self.worker = threading.Thread(target=self._run, name="subscription-monitor", daemon=True)
@@ -274,7 +280,7 @@ class SubscriptionMonitor:
         observed = result["observed_at"]
         if observed is not None and self.clock() - observed > STALE_SECONDS:
             result["status"] = "stale"
-        for field in ("billing", "chatgpt_feature_limits"):
+        for field, *_ in WEB_SOURCES:
             source = result[field]
             if source.get("observed_at") is not None and self.clock()-source["observed_at"] > source["stale_seconds"]:
                 source["status"] = "stale"
@@ -304,12 +310,11 @@ class SubscriptionMonitor:
                     self.data.update(account=None, buckets=[], reset_count=None, observed_at=None,
                                      account_observed_at=None, status="loading")
                     self.identity = identity
-                    self.data["billing"] = self._empty_source("ChatGPT 订阅", 1800, 3600)
-                    self.data["chatgpt_feature_limits"] = self._empty_source("ChatGPT 功能额度", 60, 180)
+                    self._reset_web_sources()
                 if not isinstance(account, dict) or account.get("type") not in ("chatgpt", "chatgptAuthTokens"):
                     self.data.update(status="disconnected", error="请先在本机 Codex 登录 ChatGPT 订阅账户。")
-                    self.data["billing"]["status"] = "disconnected"
-                    self.data["chatgpt_feature_limits"]["status"] = "disconnected"
+                    for field, *_ in WEB_SOURCES:
+                        self.data[field]["status"] = "disconnected"
                     return
                 self.data["account"] = {"plan_type": short_text(account.get("planType")),
                                         "email": mask_email(account.get("email")), "auth_type": "chatgpt"}
@@ -334,6 +339,10 @@ class SubscriptionMonitor:
         with self.lock:
             self.data.update(status="stale" if self.data["observed_at"] is not None else "error", error=message)
 
+    def _reset_web_sources(self):
+        for field, name, interval, stale, _ in WEB_SOURCES:
+            self.data[field] = self._empty_source(name, interval, stale)
+
     def _poll_chatgpt(self, email, force):
         try:
             identity = self.web_client.bind_account(email)
@@ -342,11 +351,9 @@ class SubscriptionMonitor:
             return
         with self.lock:
             if identity != self.web_identity:
-                self.data["billing"] = self._empty_source("ChatGPT 订阅", 1800, 3600)
-                self.data["chatgpt_feature_limits"] = self._empty_source("ChatGPT 功能额度", 60, 180)
+                self._reset_web_sources()
                 self.web_identity = identity
-        for field, read in (("chatgpt_feature_limits", self.web_client.read_limits),
-                            ("billing", self.web_client.read_billing)):
+        for field, _, _, _, method in WEB_SOURCES:
             if self.stopping.is_set():
                 break
             with self.lock:
@@ -355,7 +362,7 @@ class SubscriptionMonitor:
             if not force and old["status"] == "live" and observed is not None and self.clock()-observed < old["poll_seconds"]:
                 continue
             try:
-                values = read(email)
+                values = getattr(self.web_client, method)(email)
                 source = {**values, "source": old["source"], "poll_seconds": old["poll_seconds"],
                           "stale_seconds": old["stale_seconds"], "observed_at": self.clock(),
                           "status": "live", "error": None}
@@ -374,7 +381,7 @@ class SubscriptionMonitor:
         clear = isinstance(exc, ChatGPTSourceError) and exc.clear_cache
         message = str(exc) if isinstance(exc, ChatGPTSourceError) else "ChatGPT 账户来源暂时不可用，将自动重试。"
         with self.lock:
-            for field in ("billing", "chatgpt_feature_limits"):
+            for field, *_ in WEB_SOURCES:
                 old = self.data[field]
                 source = self._empty_source(old["source"], old["poll_seconds"], old["stale_seconds"]) if clear else old
                 source.update(status="stale" if source.get("observed_at") is not None else "error", error=message)

@@ -1,6 +1,6 @@
 # OpenAI 订阅副屏使用说明
 
-OpenAI 场景同时展示 ChatGPT 功能剩余次数、Work / Codex 共享额度，以及真实订阅周期与续费状态。额度正常每 60 秒同步，账单正常每 30 分钟同步；投屏与倒计时刷新不代表每帧都向 OpenAI 查询。
+OpenAI 场景同时展示 ChatGPT 功能剩余次数、普通聊天限制状态、高级语音可用性、Work / Codex 共享额度，以及真实订阅周期与官方套餐参考标价。额度与语音正常每 60 秒同步，账单与标价正常每 30 分钟同步；投屏与倒计时刷新不代表每帧都向 OpenAI 查询。
 
 ## 运行前提
 
@@ -17,7 +17,7 @@ OpenAI 场景同时展示 ChatGPT 功能剩余次数、Work / Codex 共享额度
 2. 额度总览并列显示返回的前两项 ChatGPT 功能额度（当前已验证深度研究、图像生成）及选中分组的 Work / Codex 共享额度；底部展示续费、自动续费、credits 和重置机会。功能次数与共享百分比不相加。
 3. 用“内容”切换总览、套餐与续费、ChatGPT 额度明细。手动选页关闭三页详情轮播；开启“详情轮播 · 15 秒”可轮换三页。功能明细独立按每页最多四项、每 15 秒自动翻页。固定订阅场景时同时关闭通用场景轮播。
 4. 返回多个共享额度分组时才显示“额度分组”；单分组隐藏此控件。所有功能条目、额度桶与窗口按返回数据处理，不补造第二个窗口或无限额度。
-5. “刷新订阅数据”提前请求 Codex 与 ChatGPT 两路来源，并强制重读 ChatGPT 功能额度和账单，不必等待账单正常周期。重复请求合并，两次读取尝试至少间隔 10 秒；成功以对应来源的同步时间为准。
+5. “刷新订阅数据”提前请求共享额度、ChatGPT 功能额度、语音、账单与标价，不必等待正常周期。重复请求合并，两次读取尝试至少间隔 10 秒；成功以对应来源的同步时间为准。
 6. 设置方向和发送帧率后点击投屏按钮。横屏为 1280×720，竖屏为 720×1280，内容重排。账户切换在 Codex 内完成，再刷新；官方用量和订阅设置链接用于核对记录，工作台没有登录、购买、续费修改或重置兑换入口。
 
 ## 两路数据来源
@@ -30,6 +30,8 @@ OpenAI 场景同时展示 ChatGPT 功能剩余次数、Work / Codex 共享额度
 | --- | --- |
 | `GET https://chatgpt.com/backend-api/subscriptions?account_id=...` | 读取订阅状态、账期、续费时间、购买渠道和币种 |
 | `POST https://chatgpt.com/backend-api/conversation/init`，body 为 `{}` | 初始化页面额度信息，读取 `limits_progress` 与可选 `model_limits` |
+| `POST https://chatgpt.com/realtime/status`，body 为 `{}` | 读取语音模式可用性与重置时间；不启动通话 |
+| `GET https://chatgpt.com/backend-api/checkout_pricing_config/configs/US` | 读取官方美元套餐价格目录；不启动结账 |
 
 额度初始化不提交 prompt、messages 或推理任务，不创建内容或兑换额度。上述网页接口不是稳定、版本化的公共 API；字段或访问规则变化时可能失效。实现对响应格式、超时和体积设限，失败显示安全错误并保留适用的旧采样，不使用伪造数据补齐。
 
@@ -39,14 +41,14 @@ OpenAI 场景同时展示 ChatGPT 功能剩余次数、Work / Codex 共享额度
 | --- | --- |
 | 套餐与账户 | 使用 Codex 账户套餐和后端脱敏邮箱 |
 | ChatGPT 功能额度 | 从 `limits_progress` 的实际功能条目读取剩余次数与 ISO `reset_after`；已验证深度研究、图像生成 |
-| 模型计数 | 只接收 `model_limits` 中明确返回的剩余计数；空列表不表示无限 |
+| 模型计数与限制 | 明确返回 `remaining` 才作为计数；通常的模型限制条目记录 `resets_after` 与备用模型，按受限状态展示。空列表仅显示“未报告模型限制”，不表示无限 |
 | Work / Codex 共享额度 | 按实际分组展示存在的 primary / secondary 窗口；剩余百分比由已用百分比换算 |
 | credits 与重置机会 | 保留来源余额、不限额标记及可用次数；只展示，不兑换、不折算现金或任务数 |
 | 当前账期 | 使用 `active_start` / `active_until` |
 | 下次续费 | 使用 `entitlement.renews_at`；`expires_at` 为权益到期，可能含宽限期，不能代替续费时间 |
 | 自动续费、周期与渠道 | 使用 `will_renew`、`billing_period` 和购买平台；例如平台字段可映射为 Google Play、App Store 或网页 |
-| 币种与续费金额 | 币种来自 `billing_currency`；本接口未返回下次实扣金额，套餐标价和历史账单均不能代替 |
-| 普通 ChatGPT 聊天消息、语音独立计数 | 当前来源未返回，不推算次数或总上限 |
+| 币种与金额 | 订阅币种来自 `billing_currency`；金额页使用“套餐标价”，按确切 `plan_code` 匹配官方美国目录月费，限定 USD 月付套餐。标价不是实扣，不计入地区税费、促销或渠道差异；不把年付的月均价当作年费 |
+| 普通 ChatGPT 聊天消息、语音独立计数 | 当前来源未返回，不推算次数或总上限；高级语音单独显示可用／不可用及明确返回的重置时间。可用不代表无限 |
 | OpenAI API 用量与账单 | 本版不接入；也不提供发票下载或支付记录列表 |
 
 当前官方用量页将 Work、Codex、agents 和 Excel 计入共享额度，普通 ChatGPT 聊天不计入该共享额度；这与深度研究、图像生成等独立功能次数是不同口径。可通过控制台的 [官方用量](https://chatgpt.com/codex/settings/usage) 入口核对，实际账户限制以官方显示为准。
@@ -59,15 +61,17 @@ OpenAI 场景同时展示 ChatGPT 功能剩余次数、Work / Codex 共享额度
 | --- | --- | --- |
 | Codex 共享额度 | 60 秒 | 180 秒 |
 | ChatGPT 功能额度 | 60 秒 | 180 秒 |
+| ChatGPT 语音状态 | 60 秒 | 180 秒 |
 | ChatGPT 订阅/续费 | 1800 秒 | 3600 秒 |
+| 官方美元套餐标价 | 1800 秒 | 3600 秒 |
 
-Codex 每个 RPC 请求超时为 20 秒，ChatGPT 网页请求超时为 8 秒。账单读取成功后按正常周期缓存，失败会在后续轮询重试。ChatGPT 功能额度与账单各自维护状态、采样时刻和错误；Codex 额度失败时仍可尝试读取 ChatGPT。账户身份无法确认时暂停该轮后续读取，避免混用账户。
+Codex 每个 RPC 请求超时为 20 秒，ChatGPT 网页请求超时为 8 秒。各来源按正常周期缓存，失败会在后续轮询重试，分别维护状态、采样时刻和错误；Codex 额度失败时仍可尝试读取 ChatGPT。账户身份无法确认时暂停该轮后续读取，避免混用账户。
 
 一项来源失败不会把其他成功来源清空。综合页提示“部分来源未同步”，对应区域保留自己的状态；账单与明细页使用本来源状态和时间。有旧值时显示过期或上次读取提示，功能/共享额度数字及进度变灰，保留旧重置时刻；无旧值时显示空态。重置时刻已到只显示等待更新，不自行补满。
 
 检测到 Codex 账户变化后，先清空旧账户的共享额度、功能额度、账单和采样时刻，再读新账户。ChatGPT 读取器还会在每轮读取前通过 `bind_account` 绑定 OAuth `account_id` 的私有 SHA-256 哈希，识别同邮箱下的工作区变化；该标识仅供本地比较，不输出到页面。每个 HTTP 请求前再次读取并校验身份，防止绑定后账户又发生切换。
 
-身份检查先于缓存有效期判断。即使没有手动强制刷新，OAuth 文件不可用、邮箱不一致或请求前发现账户变化时，也立即清空 ChatGPT 功能额度和账单两份缓存，避免一份失败而另一份仍显示旧账户信息。正常工作区变化同样先清空两份 ChatGPT 缓存，再读取新工作区数据。
+身份检查先于缓存有效期判断。即使没有手动强制刷新，OAuth 文件不可用、邮箱不一致或请求前发现账户变化时，也立即清空全部 ChatGPT 来源缓存，避免混用旧账户信息。正常工作区变化同样先清空功能额度、语音、账单与标价缓存，再读取新工作区数据。
 
 ## 凭据与进程边界
 
@@ -105,9 +109,9 @@ node --check web/display.js
 node tests/test_subscription_ui.cjs
 ```
 
-本轮已通过 35 项 Python 测试及 `node tests/test_subscription_ui.cjs`，独立代码与八张界面图复审结论为 ship。`runtime/chatgpt-qa/` 包含 `overview`、`billing`、`entitlements` 各自的 `-1280.jpg` / `-720.jpg`，以及 `controller-desktop.jpg`、`controller-narrow.jpg`；最终生产总览捕获为 `live-overview.jpg`。
+新增来源已通过 41 项 Python 测试及 `node tests/test_subscription_ui.cjs`，覆盖语音凭据过滤、可用不等于无限、模型受限不等于计数、参考价与年付口径、独立过期和账户切换清理。`runtime/chatgpt-qa/` 的 `voice-1280.jpg`、`voice-720.jpg`、`price-1280.jpg`、`price-720.jpg` 为本轮界面证据，真实读取快照为 `new-sources.json`。
 
-最终版本已部署，保留用户当前 `rotation=0` 竖屏方向，持续发送约 2 fps，实测每帧约 135 KiB 以下。真实 ChatGPT 功能数据已跨过 60 秒自动刷新，账单来源为 live。这些是运行与传输证据，本轮尚未获得用户目视确认。上一轮 `runtime/openai/light-*.png` 及用户对横屏“显示正常，方向和文字都正确”的确认仅覆盖当时版本，不作为本轮实体观感验收。
+此前版本的生产投屏证据位于 `runtime/chatgpt-qa/production.json`。方向、帧率与背景由用户控制，本轮检查不把历史版本的尺寸、帧率或用户目视确认当作新版的实体观感验收。浏览器排版与 USB 传输须分别验证。
 
 浅色主题来自本机 VS Code 内置 `2026 Light`（include `light_modern.json`），背景见 [VS Code 1.113 发布说明](https://code.visualstudio.com/updates/v1_113)。视觉规范见 [DESIGN.md](../DESIGN.md)，范围与历史稿见 [设计 brief](design/openai-subscription/brief.md)。
 

@@ -40,6 +40,9 @@ class FakeWebClient:
     def __init__(self):
         self.limit_calls = 0
         self.billing_calls = 0
+        self.voice_calls = 0
+        self.pricing_calls = 0
+        self.voice_failure = None
         self.failure = None
         self.identity = "account-a"
 
@@ -57,6 +60,18 @@ class FakeWebClient:
         if self.failure:
             raise self.failure
         return {"active":True, "will_renew":True, "renews_at":2000000000}
+
+    def read_voice(self, email):
+        self.voice_calls += 1
+        if self.failure or self.voice_failure:
+            raise self.failure or self.voice_failure
+        return {"modes":[{"id":"advanced","name":"高级语音","available":True,"remaining_minutes":None}]}
+
+    def read_pricing(self, email):
+        self.pricing_calls += 1
+        if self.failure:
+            raise self.failure
+        return {"monthly_prices":{"chatgptpro":200},"currency":"USD","kind":"catalog_reference"}
 
 
 class NormalizeTests(unittest.TestCase):
@@ -201,9 +216,12 @@ class MonitorTests(unittest.TestCase):
         monitor._poll()
         self.assertEqual(monitor.web_client.limit_calls,2)
         self.assertEqual(monitor.web_client.billing_calls,1)
+        self.assertEqual(monitor.web_client.voice_calls,2)
+        self.assertEqual(monitor.web_client.pricing_calls,1)
         monitor.refresh()
         monitor._poll()
         self.assertEqual(monitor.web_client.billing_calls,2)
+        self.assertEqual(monitor.web_client.pricing_calls,2)
 
     def test_account_mismatch_clears_web_cache(self):
         monitor, _ = self.make_monitor([account(), limits(), account(), limits()])
@@ -211,10 +229,26 @@ class MonitorTests(unittest.TestCase):
         monitor.web_client.failure=ChatGPTSourceError("mismatch", clear_cache=True)
         monitor.refresh()
         monitor._poll()
-        for field in ("chatgpt_feature_limits","billing"):
+        for field in ("chatgpt_feature_limits","billing","chatgpt_voice","plan_pricing"):
             self.assertEqual(monitor.snapshot()[field]["status"], "error")
             self.assertIsNone(monitor.snapshot()[field]["observed_at"])
             self.assertNotIn("items",monitor.snapshot()[field])
+            self.assertNotIn("modes",monitor.snapshot()[field])
+            self.assertNotIn("monthly_prices",monitor.snapshot()[field])
+
+    def test_voice_failure_does_not_age_other_sources(self):
+        monitor, _ = self.make_monitor([account(),limits(),account(),limits()])
+        monitor._poll()
+        self.now=1061
+        monitor.web_client.voice_failure=ChatGPTSourceError("voice offline")
+        monitor._poll()
+        snap=monitor.snapshot()
+        self.assertEqual(snap["chatgpt_voice"]["status"],"stale")
+        self.assertEqual(snap["chatgpt_voice"]["observed_at"],1000)
+        self.assertEqual(snap["chatgpt_feature_limits"]["status"],"live")
+        self.assertEqual(snap["plan_pricing"]["status"],"live")
+        self.now=4601
+        self.assertEqual(monitor.snapshot()["plan_pricing"]["status"],"stale")
 
     def test_identity_failure_clears_cached_billing_without_force(self):
         monitor, _ = self.make_monitor([account(), limits(), account(), limits()])

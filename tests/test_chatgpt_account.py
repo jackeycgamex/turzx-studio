@@ -10,7 +10,7 @@ import urllib.error
 from urllib.parse import urlsplit, parse_qs
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from chatgpt_account import ChatGPTAccountReader, ChatGPTSourceError, NoRedirect, normalize_billing, normalize_feature_limits
+from chatgpt_account import ChatGPTAccountReader, ChatGPTSourceError, NoRedirect, normalize_billing, normalize_feature_limits, normalize_voice, normalize_pricing
 
 
 class Response(io.BytesIO):
@@ -63,6 +63,33 @@ class NormalizationTests(unittest.TestCase):
         self.assertIsNone(result["will_renew"])
         self.assertIsNone(result["renews_at"])
 
+    def test_model_restrictions_are_not_remaining_counts(self):
+        result=normalize_feature_limits({"model_limits":[{"model_slug":"model-a","resets_after":"2027-01-01T00:00:00Z","using_default_model_slug":"model-b"}],
+                                         "blocked_features":[{"name":"image_gen","resets_after":"2027-01-01T00:00:00Z"}]})
+        self.assertEqual(result["items"],[])
+        self.assertFalse(result["model_counters_provided"])
+        self.assertTrue(result["model_status_provided"])
+        self.assertEqual(result["model_restrictions"][0]["fallback_model"],"model-b")
+        self.assertGreater(result["model_restrictions"][0]["resets_at"],0)
+        self.assertEqual(result["blocked_features"],["image_gen"])
+
+    def test_voice_available_is_not_unlimited_or_a_numeric_counter(self):
+        for metadata, expected in ((None,True),({},False),("unexpected",None)):
+            result=normalize_voice({"modes":[{"mode":"advanced","disabled_mode_metadata":metadata}],
+                                    "chatreq_token":"SECRET","chatreq":{"token":"SECRET","proofofwork":{"seed":"SECRET"}}})
+            self.assertIs(result["modes"][0]["available"],expected)
+            self.assertIsNone(result["modes"][0]["remaining_minutes"])
+            self.assertNotIn("SECRET",str(result))
+        self.assertIsNone(normalize_voice({"modes":[{"mode":"advanced"}]})["modes"][0]["available"])
+
+    def test_reference_price_does_not_convert_annual_equivalent_or_mix_currency(self):
+        raw={"country_code":"US","currency_config":{"symbol_code":"USD","pro":{"month":{"amount":200}},"plus":{"year":{"amount":16.67}}}}
+        result=normalize_pricing(raw)
+        self.assertEqual(result["monthly_prices"],{"chatgptpro":200})
+        self.assertEqual(result["kind"],"catalog_reference")
+        raw["currency_config"]["symbol_code"]="SGD"
+        self.assertEqual(normalize_pricing(raw)["monthly_prices"],{})
+
 
 class ReaderTests(unittest.TestCase):
     def setUp(self):
@@ -108,6 +135,25 @@ class ReaderTests(unittest.TestCase):
         self.assertIsNone(NoRedirect().redirect_request(None,None,302,'',{},'https://example.com/'))
         with self.assertRaises(ChatGPTSourceError):
             ChatGPTAccountReader(self.path,FakeOpener({"unexpected":"value"})).read_limits('one@example.com')
+
+    def test_voice_reads_status_without_starting_a_call(self):
+        opener=FakeOpener({"modes":[],"chatreq_token":"SECRET"})
+        result=ChatGPTAccountReader(self.path,opener).read_voice('one@example.com')
+        request=opener.requests[0]
+        self.assertEqual(request.full_url,'https://chatgpt.com/realtime/status')
+        self.assertEqual(request.get_method(),'POST')
+        self.assertEqual(json.loads(request.data),{})
+        self.assertNotIn('SECRET',str(result))
+
+    def test_pricing_uses_fixed_read_only_catalog(self):
+        opener=FakeOpener({"country_code":"US","currency_config":{"symbol_code":"USD"}})
+        ChatGPTAccountReader(self.path,opener).read_pricing('one@example.com')
+        request=opener.requests[0]
+        self.assertEqual(request.get_method(),'GET')
+        self.assertEqual(request.full_url,'https://chatgpt.com/backend-api/checkout_pricing_config/configs/US')
+        for method in ('read_voice','read_pricing'):
+            with self.assertRaises(ChatGPTSourceError):
+                getattr(ChatGPTAccountReader(self.path,FakeOpener({})),method)('one@example.com')
 
 
 if __name__=='__main__':

@@ -48,9 +48,9 @@
     $('subscription-bucket-row').hidden=buckets.length<2;
     if(document.activeElement!==$('subscription-bucket'))$('subscription-bucket').value=buckets.some(b=>b.id===state.subscription_bucket)?state.subscription_bucket:buckets[0]?.id||'';
     const subscriptionTime=subscription.observed_at?new Date(subscription.observed_at*1000).toLocaleTimeString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false}):null;
-    const chatgpt=subscription.chatgpt_feature_limits||{},billing=subscription.billing||{};
+    const chatgpt=subscription.chatgpt_feature_limits||{},billing=subscription.billing||{},voice=subscription.chatgpt_voice||{},pricing=subscription.plan_pricing||{};
     const sourceTime=s=>s.observed_at?new Date(s.observed_at*1000).toLocaleTimeString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false}):'未同步';
-    $('subscription-status').textContent=subscription.refreshing?'正在刷新订阅数据…':chatgpt.error||billing.error||subscription.error||`ChatGPT ${sourceTime(chatgpt)} · Work ${subscriptionTime||'未同步'} · 续费 ${sourceTime(billing)}`;
+    $('subscription-status').textContent=subscription.refreshing?'正在刷新订阅数据…':chatgpt.error||voice.error||billing.error||pricing.error||subscription.error||`额度 ${sourceTime(chatgpt)} · 语音 ${sourceTime(voice)} · Work ${subscriptionTime||'未同步'} · 续费 ${sourceTime(billing)} · 标价 ${sourceTime(pricing)}`;
     $('subscription-refresh').disabled=busy||Boolean(subscription.refreshing);
     $('animation-controls').hidden=state.page!=='ambient';
     for(const [key,id] of [['preset','animation-preset'],['detail','animation-detail']])if(motion[key]!==undefined&&document.activeElement!==$(id))$(id).value=motion[key];
@@ -61,7 +61,7 @@
     $('animation-performance').textContent=streaming&&finite(stats.last_frame_bytes)?`实际 ${Number(stats.effective_fps||0).toFixed(1)} fps · 每帧 ${(stats.last_frame_bytes/1024).toFixed(0)} KiB\n绘制 ${Number(stats.render_ms||0).toFixed(0)} ms · 转换 ${Number(stats.encode_ms||0).toFixed(0)} ms · 传输 ${Number(stats.last_ms||0).toFixed(0)} ms`:'开始投屏后显示本机实际速度。';
     previewSize();
   }
-  function applyMetrics(data){metrics=data;if(state?.page==='openai'){const sub=state.subscription||{},sources=[sub,sub.chatgpt_feature_limits||{},sub.billing||{}],old=s=>s.status==='stale'||s.observed_at&&Date.now()/1000-s.observed_at>(s.stale_seconds||180);$('data-state').textContent=sources.some(old)?'部分来源已过期':sources.every(s=>s.status==='live')?'订阅已同步':sub.status==='disconnected'?'账户未连接':sources.some(s=>s.status==='error')?'部分来源未同步':'订阅同步中';return;}const age=data?.timestamp?Date.now()-Date.parse(data.timestamp):Infinity;$('data-state').textContent=!data?.timestamp?'等待采样':age>6500?'数据已过期':'本机实时';}
+  function applyMetrics(data){metrics=data;if(state?.page==='openai'){const sub=state.subscription||{},sources=[sub,sub.chatgpt_feature_limits||{},sub.chatgpt_voice||{},sub.billing||{},sub.plan_pricing||{}],old=s=>s.status==='stale'||s.observed_at&&Date.now()/1000-s.observed_at>(s.stale_seconds||180);$('data-state').textContent=sources.some(old)?'部分来源已过期':sources.every(s=>s.status==='live')?'订阅已同步':sub.status==='disconnected'?'账户未连接':sources.some(s=>s.status==='error')?'部分来源未同步':'订阅同步中';return;}const age=data?.timestamp?Date.now()-Date.parse(data.timestamp):Infinity;$('data-state').textContent=!data?.timestamp?'等待采样':age>6500?'数据已过期':'本机实时';}
   async function control(patch,success){
     const isOutput=patch.action==='start'||patch.action==='stop';if(isOutput&&busy)return;
     if(isOutput){busy=true;document.body.classList.add('busy');$('start-button').disabled=true;$('stop-button').disabled=true;notify(patch.action==='start'?'正在连接副屏并准备画面…':'正在停止输出…',false,true);}

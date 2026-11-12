@@ -87,6 +87,7 @@ FEATURE_NAMES = {
 
 def normalize_feature_limits(raw):
     items = []
+    restrictions = []
     progress = raw.get("limits_progress")
     for entry in progress if isinstance(progress, list) else []:
         if not isinstance(entry, dict):
@@ -106,11 +107,53 @@ def normalize_feature_limits(raw):
         if model and "remaining" in entry:
             items.append({"id": "model:"+model, "name": model, "kind": "model",
                           "remaining": number(entry.get("remaining")),
-                          "resets_at": timestamp(entry.get("reset_after")), "unit": "次"})
+                          "resets_at": timestamp(entry.get("resets_after") or entry.get("reset_after")), "unit": "次"})
+        elif model:
+            # The shipped client schema describes restrictions/fallbacks, not counts.
+            restrictions.append({"model": model,
+                                 "resets_at": timestamp(entry.get("resets_after")),
+                                 "fallback_model": text(entry.get("using_default_model_slug"))})
     blocked = raw.get("blocked_features")
-    blocked = [text(item) for item in blocked if isinstance(item, str)] if isinstance(blocked, list) else []
+    blocked = [text(item if isinstance(item, str) else item.get("name"))
+               for item in blocked if isinstance(item, (str, dict))] if isinstance(blocked, list) else []
     return {"items": items, "blocked_features": blocked,
-            "model_counters_provided": any(item["kind"] == "model" for item in items)}
+            "model_counters_provided": any(item["kind"] == "model" for item in items),
+            "model_status_provided": isinstance(models, list), "model_restrictions": restrictions}
+
+
+def normalize_voice(raw):
+    modes = []
+    for entry in raw.get("modes", []):
+        if not isinstance(entry, dict) or not text(entry.get("mode")):
+            continue
+        disabled = entry.get("disabled_mode_metadata")
+        available = (True if disabled is None else False if isinstance(disabled, dict) else None) if "disabled_mode_metadata" in entry else None
+        mode = text(entry["mode"])
+        modes.append({"id": mode, "name": {"advanced": "高级语音", "standard": "标准语音"}.get(mode, mode),
+                      "available": available, "resets_at": timestamp(entry.get("resets_after")),
+                      "remaining_minutes": None})
+    # Drop chatreq tokens, proof-of-work parameters and all opaque response fields.
+    return {"default_mode": text(raw.get("default_voice_mode")), "modes": modes}
+
+
+PLAN_CODES = {"chatgptgoplan": "go", "chatgptplusplan": "plus", "chatgptprolite": "prolite",
+              "chatgptpro": "pro", "chatgptpromax": "promax"}
+
+
+def normalize_pricing(raw):
+    config = raw.get("currency_config")
+    config = config if isinstance(config, dict) else {}
+    # US catalog amounts are reference prices. Annual entries are monthly
+    # equivalents, so do not interpret them as the amount of an annual charge.
+    prices = {}
+    if raw.get("country_code") == "US" and config.get("symbol_code") == "USD":
+        for code, key in PLAN_CODES.items():
+            plan = config.get(key)
+            month = plan.get("month") if isinstance(plan, dict) else None
+            amount = number(month.get("amount")) if isinstance(month, dict) else None
+            if amount is not None:
+                prices[code] = amount
+    return {"monthly_prices": prices, "currency": "USD", "country": "US", "kind": "catalog_reference"}
 
 
 class ChatGPTAccountReader:
@@ -146,7 +189,7 @@ class ChatGPTAccountReader:
             raise ChatGPTSourceError("无法读取本机 ChatGPT OAuth 登录，请在 Codex 重新登录后刷新。", clear_cache=True) from None
 
     def _read(self, resource, expected_email):
-        if resource not in ("billing", "limits"):
+        if resource not in ("billing", "limits", "voice", "pricing"):
             raise ValueError("Unknown read-only resource")
         token, account_id = self._credentials(expected_email)
         if self.bound_account is not None and hashlib.sha256(account_id.encode()).hexdigest() != self.bound_account:
@@ -156,11 +199,14 @@ class ChatGPTAccountReader:
         if resource == "billing":
             url = "https://chatgpt.com/backend-api/subscriptions?" + urllib.parse.urlencode({"account_id": account_id})
             request = urllib.request.Request(url, headers=headers, method="GET")
+        elif resource == "pricing":
+            request = urllib.request.Request("https://chatgpt.com/backend-api/checkout_pricing_config/configs/US", headers=headers, method="GET")
         else:
             # This is the page's quota initialization query. No prompt, message,
             # conversation creation, inference, or quota redemption is submitted.
             headers["Content-Type"] = "application/json"
-            request = urllib.request.Request("https://chatgpt.com/backend-api/conversation/init",
+            url = "https://chatgpt.com/realtime/status" if resource == "voice" else "https://chatgpt.com/backend-api/conversation/init"
+            request = urllib.request.Request(url,
                                              data=b"{}", headers=headers, method="POST")
         try:
             with self.opener.open(request, timeout=8) as response:
@@ -174,6 +220,10 @@ class ChatGPTAccountReader:
                     raise ChatGPTSourceError("ChatGPT 额度格式已变化，暂时无法读取。")
                 if resource == "billing" and not any(key in raw for key in ("entitlement", "plan_type", "is_active")):
                     raise ChatGPTSourceError("ChatGPT 订阅格式已变化，暂时无法读取。")
+                if resource == "voice" and not isinstance(raw.get("modes"), list):
+                    raise ChatGPTSourceError("ChatGPT 语音状态格式已变化，暂时无法读取。")
+                if resource == "pricing" and (raw.get("country_code") != "US" or not isinstance(raw.get("currency_config"), dict) or raw["currency_config"].get("symbol_code") != "USD"):
+                    raise ChatGPTSourceError("ChatGPT 套餐标价格式已变化，暂时无法读取。")
                 return raw
         except urllib.error.HTTPError as exc:
             code = exc.code
@@ -191,3 +241,9 @@ class ChatGPTAccountReader:
 
     def read_billing(self, expected_email):
         return normalize_billing(self._read("billing", expected_email))
+
+    def read_voice(self, expected_email):
+        return normalize_voice(self._read("voice", expected_email))
+
+    def read_pricing(self, expected_email):
+        return normalize_pricing(self._read("pricing", expected_email))

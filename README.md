@@ -76,9 +76,9 @@ npm ci
 
 本机已安装并登录 ChatGPT 账户的 Codex CLI 后，选择「OpenAI 订阅」即可同时查看 ChatGPT 深度研究、图像生成等实际返回的功能剩余次数，Work / Codex 共享额度，以及订阅账期、下次续费、自动续费和购买渠道。额度每 60 秒同步，账单正常情况下每 30 分钟同步；支持手动刷新全部来源、三页切换和 15 秒轮播，功能明细每页最多四项。
 
-账户和共享额度来自 Codex app-server；ChatGPT 功能额度与续费信息来自 ChatGPT 网页账户接口。后者会读取当前 Codex 的 `auth.json` OAuth 凭据，在内存中使用并校验邮箱一致性，同时通过 OAuth `account_id` 的私有哈希识别同邮箱下的工作区变化；请求前再次校验，身份失效立即清除功能额度和账单两份缓存。只向固定 `chatgpt.com` HTTPS 接口发送，禁止重定向，不另存凭据或向页面暴露 token。额度初始化请求不含 prompt/messages，不执行推理、支付或重置兑换。
+账户和共享额度来自 Codex app-server；ChatGPT 功能额度与续费信息来自 ChatGPT 网页账户接口。后者会读取当前 Codex 的 `auth.json` OAuth 凭据，在内存中使用并校验邮箱一致性，同时通过 OAuth `account_id` 的私有哈希识别同邮箱下的工作区变化；请求前再次校验，身份失效立即清除全部 ChatGPT 来源缓存。只向固定 `chatgpt.com` HTTPS 接口发送，禁止重定向，不另存凭据或向页面暴露 token。额度初始化请求不含 prompt/messages，不执行推理、支付或重置兑换。
 
-网页账户接口不是稳定的公共 API，可能变更；各来源分别记录成功、失败与过期，失败保留旧采样或显示空态。普通 ChatGPT 聊天消息、语音独立计数和下次续费实扣金额当前未返回，明确标为未提供；空模型列表不代表无限。OpenAI API 用量与账单不纳入本页。详见 [OpenAI 订阅接入与使用](docs/openai-subscription.md)。
+网页账户接口不是稳定的公共 API，可能变更；各来源分别记录成功、失败与过期，失败保留旧采样或显示空态。明细页展示普通聊天限制状态和高级语音可用性，但独立剩余条数／分钟数仍未返回；空模型列表或“可用”不代表无限。金额页按当前 USD 月付套餐匹配官方目录，显示“套餐标价”，与实扣金额区分。OpenAI API 用量与账单不纳入本页。详见 [OpenAI 订阅接入与使用](docs/openai-subscription.md)。
 
 ## 数据口径
 

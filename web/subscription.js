@@ -57,30 +57,40 @@
     const items=features.items?.length?features.items.slice(0,2):[{name:'深度研究',remaining:null},{name:'图像生成',remaining:null}];
     return `<div class="subscription-identity"><div><h2>${safe(planName(data))}</h2><span>${safe(data.account.email || '已连接账户')}</span></div><span class="subscription-bucket">ChatGPT + Work</span></div><div class="subscription-content combined-quotas">${items.map(item=>featureCell(item,features,offline)).join('')}${sharedCell(data,bucket,offline)}</div><div class="subscription-extras combined-extras"><div class="${isOld(bill,offline)?'source-old':''}"><span>${isOld(bill,offline)?'续费 · 旧数据':'下次续费'}</span><strong>${safe(renewal(bill))}</strong></div><div><span>自动续费</span><strong>${bill.will_renew===true?'已开启':bill.will_renew===false?'已关闭':'来源未提供'}</strong></div><div><span>额外 credits</span><strong>${safe(creditBalance(bucket))}</strong></div><div><span>重置机会</span><strong>${Number.isInteger(data.reset_count)?data.reset_count+' 次':'来源未提供'}</strong></div></div>`;
   }
-  function billing(data) {
+  function billing(data, offline) {
     if (!data.account) return empty(data);
     const b=data.billing||{},platforms={chatgpt_mobile_android:'Google Play',chatgpt_mobile_ios:'App Store',chatgpt_web:'ChatGPT 网页',web:'ChatGPT 网页'};
     const period=finite(b.period_start)&&finite(b.period_end)?`${dayFormat.format(new Date(b.period_start*1000))} – ${dayFormat.format(new Date(b.period_end*1000))}`:'来源未提供';
-    const rows=[['当前账期',period],['下次续费',renewal(b,true)],['自动续费',b.will_renew===true?'已开启':b.will_renew===false?'已关闭':'来源未提供'],['订阅周期',({monthly:'每月',annual:'每年',yearly:'每年'})[b.billing_period]||b.billing_period||'来源未提供'],['续费金额',b.currency?`实扣金额未提供 · ${b.currency}`:'来源未提供']];
-    return `<div class="subscription-billing subscription-content"><div class="subscription-account"><h2>${safe(planName(data))}</h2><p>${b.active===true?'订阅有效':b.active===false?'订阅未生效':'订阅状态未提供'}</p><p class="subscription-email">${safe(data.account.email || '账户邮箱未提供')}</p><div class="subscription-account-state"><span>订阅渠道</span><strong>${safe(platforms[b.purchase_platform]||b.purchase_platform||'来源未提供')}</strong><small>${b.is_delinquent===true?'账户存在欠款，请查看官方账单':'续费信息来自 ChatGPT 账户'}</small></div></div><dl>${rows.map(([label,value])=>`<div><dt>${label}</dt><dd>${safe(value)}</dd></div>`).join('')}</dl></div><p class="subscription-note">${safe(b.error||'续费金额未返回；套餐标价不等于下次实际扣款。')}</p>`;
+    const pricing=data.plan_pricing||{},price=pricing.monthly_prices?.[b.plan_code];
+    const hasPrice=pricing.kind==='catalog_reference'&&pricing.currency==='USD'&&b.currency==='USD'&&b.billing_period==='monthly'&&finite(price)&&price>=0;
+    const priceOld=isOld(pricing,offline)||isOld(b,offline);
+    const priceText=hasPrice?`${new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(price)} USD / 月`:'来源未提供';
+    const rows=[['当前账期',period],['下次续费',renewal(b,true)],['自动续费',b.will_renew===true?'已开启':b.will_renew===false?'已关闭':'来源未提供'],['订阅周期',({monthly:'每月',annual:'每年',yearly:'每年'})[b.billing_period]||b.billing_period||'来源未提供'],[priceOld?'套餐标价 · 上次读取':'套餐标价',priceText,priceOld]];
+    return `<div class="subscription-billing subscription-content"><div class="subscription-account"><h2>${safe(planName(data))}</h2><p>${b.active===true?'订阅有效':b.active===false?'订阅未生效':'订阅状态未提供'}</p><p class="subscription-email">${safe(data.account.email || '账户邮箱未提供')}</p><div class="subscription-account-state"><span>订阅渠道</span><strong>${safe(platforms[b.purchase_platform]||b.purchase_platform||'来源未提供')}</strong><small>${b.is_delinquent===true?'账户存在欠款，请查看官方账单':'续费信息来自 ChatGPT 账户'}</small></div></div><dl>${rows.map(([label,value,old])=>`<div class="${old?'source-old':''}"><dt>${label}</dt><dd>${safe(value)}</dd></div>`).join('')}</dl></div><p class="subscription-note">${safe(b.error||pricing.error||(hasPrice?'官方美元目录参考价；实扣可能因税费、折扣及购买渠道不同。':'实扣金额未提供；未匹配到当前套餐的美元月费标价。'))}</p>`;
   }
   function entitlements(data, bucket, offline) {
     if (!data.account) return empty(data);
-    const source=data.chatgpt_feature_limits||{},old=isOld(source,offline),items=source.items||[];
-    const pages=Math.max(1,Math.ceil(items.length/4)),page=Math.floor(Date.now()/15000)%pages;
-    const rows=items.slice(page*4,page*4+4).map(item=>{const expired=finite(item.resets_at)&&item.resets_at<=Date.now()/1000,blocked=(source.blocked_features||[]).includes(item.id),note=old?' · 上次读取':blocked?' · 当前受限':expired?' · 等待更新':item.remaining===0?' · 已耗尽':'';return {old:old||expired,cells:[item.name,`${remaining(item.remaining)}${finite(item.remaining)?' 次':''}${note}`,finite(item.resets_at)?dateFormat.format(new Date(item.resets_at*1000))+' 重置':'时间未提供']};});
-    return `<div class="subscription-identity"><h2>ChatGPT 功能额度</h2><span>${old?'上次读取剩余':pages>1?`明细 ${page+1}/${pages} · 15 秒换页`:'独立次数 · 不与 Work 相加'}</span></div><div class="subscription-content subscription-entitlements ${old?'source-old':''}"><div class="entitlement-row entitlement-head"><span>功能</span><span>剩余次数</span><span>重置时间 · 北京</span></div>${rows.length?rows.map(row=>`<div class="entitlement-row ${row.old?'source-old':''}">${row.cells.map(cell=>`<span>${safe(cell)}</span>`).join('')}</div>`).join(''):`<p class="subscription-note">${safe(source.error||'正在读取 ChatGPT 功能额度。')}</p>`}</div><p class="subscription-note">${safe(source.error||'聊天模型、语音等未返回独立计数；不推算总上限。')}</p>`;
+    const source=data.chatgpt_feature_limits||{},old=isOld(source,offline),items=source.items||[],voice=data.chatgpt_voice||{},voiceOld=isOld(voice,offline);
+    const allRows=items.map(item=>{const expired=finite(item.resets_at)&&item.resets_at<=Date.now()/1000,blocked=(source.blocked_features||[]).includes(item.id),note=old?' · 上次读取':blocked?' · 当前受限':expired?' · 等待更新':item.remaining===0?' · 已耗尽':'';return {old:old||expired,cells:[item.name,`${remaining(item.remaining)}${finite(item.remaining)?' 次':''}${note}`,finite(item.resets_at)?dateFormat.format(new Date(item.resets_at*1000))+' 重置':'时间未提供']};});
+    const restrictions=source.model_restrictions||[];
+    if(!source.model_counters_provided) allRows.push({old,cells:['普通聊天','次数未提供',old?'限制状态待刷新':restrictions.length?'有模型受限':source.model_status_provided?'未报告模型限制':'状态未提供']});
+    for(const item of restrictions) {const expired=finite(item.resets_at)&&item.resets_at<=Date.now()/1000;allRows.push({old:old||expired,cells:[item.model,old?'上次报告受限':expired?'等待状态更新':'模型受限',finite(item.resets_at)?dateFormat.format(new Date(item.resets_at*1000))+' 重置':'时间未提供']});}
+    const modes=voice.modes?.length?voice.modes:[{name:'语音',available:null}];
+    for(const mode of modes) {const expired=finite(mode.resets_at)&&mode.resets_at<=Date.now()/1000;allRows.push({old:voiceOld||expired,cells:[mode.name,voiceOld?'上次状态 · 待刷新':expired?'等待状态更新':mode.available===true?'可用 · 分钟数未提供':mode.available===false?'当前不可用':'状态未提供',finite(mode.resets_at)?dateFormat.format(new Date(mode.resets_at*1000))+' 重置':'时间未提供']});}
+    const pages=Math.max(1,Math.ceil(allRows.length/4)),page=Math.floor(Date.now()/15000)%pages,rows=allRows.slice(page*4,page*4+4);
+    return `<div class="subscription-identity"><h2>ChatGPT 功能额度</h2><span>${pages>1?`明细 ${page+1}/${pages} · 15 秒换页`:'次数与可用状态'}</span></div><div class="subscription-content subscription-entitlements"><div class="entitlement-row entitlement-head"><span>功能</span><span>剩余 / 状态</span><span>重置 / 限制 · 北京</span></div>${rows.map(row=>`<div class="entitlement-row ${row.old?'source-old':''}">${row.cells.map(cell=>`<span>${safe(cell)}</span>`).join('')}</div>`).join('')}</div><p class="subscription-note">${safe(source.error||voice.error||'“可用”不代表无限；聊天条数与语音分钟数未返回时不推算。')}</p>`;
   }
   function render(data={}, view='overview', selected='codex', disconnected=false) {
     const source=view==='billing'?(data.billing||{}):view==='entitlements'?(data.chatgpt_feature_limits||{}):data;
     const old=isOld(source,disconnected);
-    const partial=view==='overview'&&[data,data.billing||{},data.chatgpt_feature_limits||{}].some(s=>s.status!=='live'||isOld(s,disconnected));
+    const sources=view==='billing'?[data.billing||{},data.plan_pricing||{}]:view==='entitlements'?[data.chatgpt_feature_limits||{},data.chatgpt_voice||{}]:[data,data.billing||{},data.chatgpt_feature_limits||{}];
+    const partial=sources.some(s=>s.status!=='live'||isOld(s,disconnected));
     const status=old?'已过期 · 上次读取':source.status==='live'?(partial?'部分来源未同步':data.refreshing?'正在更新':'已同步'):source.status==='loading'?'正在读取':source.status==='disconnected'?'未连接':'读取失败';
     const buckets = data.buckets || [], bucket = buckets.find(item=>item.id===selected) || buckets[0];
     const names = {overview:'OpenAI 订阅', billing:'套餐与续费', entitlements:'ChatGPT 额度明细'};
     const page = Object.keys(names).indexOf(view)+1 || 1;
-    const body = view==='billing'?billing(data):view==='entitlements'?entitlements(data,bucket,disconnected):overview(data,bucket,disconnected);
-    const stamp=view==='overview'?`ChatGPT ${syncTime(data.chatgpt_feature_limits)} · Work ${syncTime(data)}`:`${old?'上次同步':'同步'} ${syncTime(source)} · ChatGPT`;
+    const body = view==='billing'?billing(data,disconnected):view==='entitlements'?entitlements(data,bucket,disconnected):overview(data,bucket,disconnected);
+    const stamp=view==='overview'?`ChatGPT ${syncTime(data.chatgpt_feature_limits)} · Work ${syncTime(data)}`:view==='billing'?`账单 ${syncTime(source)} · 标价 ${syncTime(data.plan_pricing)}`:`额度 ${syncTime(source)} · 语音 ${syncTime(data.chatgpt_voice)}`;
     return `<section class="subscription-screen ${old?'is-stale':''} ${view==='overview'?'combined-screen':''}"><header class="subscription-head"><h1><svg class="subscription-code-mark" viewBox="0 0 32 32" aria-hidden="true"><path d="m10 8-7 8 7 8m12-16 7 8-7 8M19 5l-6 22"/></svg>${names[view]||names.overview}</h1><span class="subscription-status ${old||partial||source.status==='error'?'warning':''}">${status}</span></header>${body}<footer class="subscription-footer"><span>${safe(stamp)}</span><span>${page} / 3</span></footer></section>`;
   }
   window.TurzxSubscription = {render, planName, bucketName, creditBalance};
