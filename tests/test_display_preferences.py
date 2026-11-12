@@ -22,7 +22,7 @@ class DisplayPreferenceTests(unittest.TestCase):
         studio.state_lock = threading.RLock()
         studio.preferences_path = self.path
         studio.state = {"subscription_background": "none", "subscription_background_transparency": 25,
-                        "rotation": 270, "page": "system", "fps": 2, "focus": {}}
+                        "rotation": 270, "page": "system", "fps": 2, "resume_streaming": False, "focus": {}}
         studio.snapshot = lambda: dict(studio.state)
         return studio
 
@@ -32,13 +32,13 @@ class DisplayPreferenceTests(unittest.TestCase):
         studio.control({"subscription_background_transparency": 0})
         self.assertEqual(load_display_preferences(self.path), {
             "subscription_background": "dragon", "subscription_background_transparency": 0,
-            "rotation": 270, "page": "system", "fps": 2})
+            "rotation": 270, "page": "system", "fps": 2, "resume_streaming": False})
         studio.control({"subscription_background": "none"})
         self.assertEqual(load_display_preferences(self.path)["subscription_background_transparency"], 0)
 
     def test_only_requested_preferences_are_saved(self):
         save_display_preferences(self.path, {"subscription_background": "it", "subscription_background_transparency": 100,
-                                            "rotation": 0, "page": "openai", "fps": 5,
+                                            "rotation": 0, "page": "openai", "fps": 5, "resume_streaming": False,
                                             "streaming": True, "token": "private"})
         self.assertEqual(set(json.loads(self.path.read_text(encoding="utf-8"))),
                          set(DISPLAY_PREFERENCES))

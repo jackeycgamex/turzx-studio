@@ -32,7 +32,7 @@ RUNTIME = ROOT / "runtime"
 PAGES = ("system", "network", "clock", "focus", "ambient", "openai", "media", "guide", "calibrate")
 SUBSCRIPTION_VIEWS = ("overview", "billing", "entitlements")
 SUBSCRIPTION_BACKGROUNDS = ("none", "it", "anime", "dragon")
-DISPLAY_PREFERENCES = ("subscription_background", "subscription_background_transparency", "rotation", "page", "fps")
+DISPLAY_PREFERENCES = ("subscription_background", "subscription_background_transparency", "rotation", "page", "fps", "resume_streaming")
 LOG = logging.getLogger("turzx")
 
 
@@ -57,6 +57,8 @@ def load_display_preferences(path):
     for key, choices in (("rotation", (0, 90, 180, 270)), ("fps", (1, 2, 5, 10))):
         if type(saved.get(key)) is int and saved[key] in choices:
             result[key] = saved[key]
+    if type(saved.get("resume_streaming")) is bool:
+        result["resume_streaming"] = saved["resume_streaming"]
     return result
 
 
@@ -103,7 +105,7 @@ class Studio:
         self.frame_times = deque(maxlen=30)
         self.state = {
             "page": "system", "rotation": 270, "fps": 2, "auto": False,
-            "interval": 20, "streaming": False, "connected": False,
+            "interval": 20, "streaming": False, "connected": False, "resume_streaming": False,
             "error": None, "brightness": None,
             "stats": {"frames": 0, "last_ms": None, "bytes": 0,
                       "effective_fps": 0, "last_ack": None},
@@ -117,6 +119,7 @@ class Studio:
         }
         self.preferences_path = RUNTIME / "display-preferences.json"
         self.state.update(load_display_preferences(self.preferences_path))
+        self.resume_pending = self.state["resume_streaming"]
         self.clock = threading.Thread(target=self._clock, name="studio-clock", daemon=True)
         self.clock.start()
 
@@ -155,8 +158,28 @@ class Studio:
             if renderer and renderer.poll() is not None and renderer is self.renderer and self.snapshot()["streaming"]:
                 self.fail(f"页面渲染进程已退出（{renderer.returncode}），请查看 runtime/renderer.log 后重新开始。", generation)
 
+    def _remember_streaming(self, enabled):
+        with self.state_lock:
+            save_display_preferences(self.preferences_path, {**self.state, "resume_streaming": enabled})
+            self.state["resume_streaming"] = enabled
+
+    def resume_on_startup(self):
+        with self.lifecycle_lock:
+            if not self.resume_pending:
+                return
+            self.resume_pending = False
+            if self.stopping.is_set() or not self.state["resume_streaming"]:
+                return
+            try:
+                self.start()
+            except Exception as exc:
+                # Leave HTTP controls available for a manual retry. No retry loop.
+                LOG.warning("Automatic display resume failed: %s", exc)
+
     def start(self):
         with self.lifecycle_lock:
+            if self.stopping.is_set():
+                raise SessionPaused("工作台正在关闭。")
             if self.snapshot()["streaming"]:
                 return
             self.stop()
@@ -187,6 +210,7 @@ class Studio:
                     cwd=ROOT, env=env, stdout=self.renderer_log, stderr=subprocess.STDOUT,
                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                 )
+                self._remember_streaming(True)
                 LOG.info("Started display session; renderer pid=%s", self.renderer.pid)
             except Exception as exc:
                 self.stop()
@@ -194,7 +218,7 @@ class Studio:
                     self.state["error"] = str(exc)
                 raise
 
-    def stop(self, expected_session=None):
+    def stop(self, expected_session=None, *, remember=False):
         with self.lifecycle_lock:
             if expected_session is not None and expected_session != self.session_id:
                 return
@@ -230,6 +254,9 @@ class Studio:
                     self.device = None
             with self.state_lock:
                 self.state["connected"] = False
+            if remember:
+                self.resume_pending = False
+                self._remember_streaming(False)
             LOG.info("Display session stopped; last frame retained")
 
     def fail(self, message, expected_session):
@@ -318,6 +345,12 @@ class Studio:
         if action == "start":
             self.start()
         elif action == "stop":
+            self.stop(remember=True)
+        elif action == "shutdown":
+            # Release USB while HTTP is still serving the renderer's final poll.
+            # A completed shutdown request must not leave the next launch racing
+            # an old process that still owns the panel.
+            self.stopping.set()
             self.stop()
         elif action == "subscription_refresh":
             self.subscription.refresh()
@@ -509,8 +542,11 @@ def main():
     app = Studio(args.port)
     server.app = app
     (RUNTIME / "server.pid").write_text(str(os.getpid()), encoding="ascii")
-    LOG.info("TURZX Studio http://127.0.0.1:%s (preview only until Start)", args.port)
+    LOG.info("TURZX Studio http://127.0.0.1:%s", args.port)
     try:
+        # The listening socket and app are ready; keep serving HTTP while USB
+        # connects so the renderer and the user's controls remain responsive.
+        threading.Thread(target=app.resume_on_startup, name="studio-resume", daemon=True).start()
         server.serve_forever(poll_interval=.2)
     except KeyboardInterrupt:
         pass

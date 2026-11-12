@@ -37,6 +37,8 @@ npm ci
 
 屏幕方向、当前页面、发送帧率，以及 OpenAI 订阅页的背景和透明度会自动保存到本机 `runtime/display-preferences.json`，重启服务后恢复。
 
+正在投屏时关闭服务，下次启动会自动继续投屏；先点击“停止”再关闭，下次保持停止。自动恢复只尝试连接一次，设备未连接等错误会显示在控制台，可手动重试。此功能不配置 Windows 开机自启动。
+
 启动器优先使用项目的 `.venv\Scripts\python.exe`，否则使用 PATH 中的 Python。已有服务时会复用。也可以在终端运行：
 
 ```powershell
