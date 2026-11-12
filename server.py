@@ -22,7 +22,7 @@ from urllib.parse import unquote, urlsplit
 
 from PIL import Image
 from telemetry import Telemetry
-from turzx_usb import TurzxWinUSB
+from turzx_usb import TurzxWinUSB, enumerate_device_paths
 from animation_state import AnimationState
 from subscription import SubscriptionMonitor
 
@@ -119,7 +119,8 @@ class Studio:
         }
         self.preferences_path = RUNTIME / "display-preferences.json"
         self.state.update(load_display_preferences(self.preferences_path))
-        self.resume_pending = self.state["resume_streaming"]
+        self.reconnect_at = 0.0
+        self.reconnect_delay = 2.0
         self.clock = threading.Thread(target=self._clock, name="studio-clock", daemon=True)
         self.clock.start()
 
@@ -163,18 +164,36 @@ class Studio:
             save_display_preferences(self.preferences_path, {**self.state, "resume_streaming": enabled})
             self.state["resume_streaming"] = enabled
 
-    def resume_on_startup(self):
+    def maintain_connection(self):
+        while not self.stopping.is_set():
+            self.try_resume_streaming()
+            self.stopping.wait(2)
+
+    def try_resume_streaming(self):
         with self.lifecycle_lock:
-            if not self.resume_pending:
+            if self.stopping.is_set() or not self.state["resume_streaming"] or self.state["streaming"]:
                 return
-            self.resume_pending = False
-            if self.stopping.is_set() or not self.state["resume_streaming"]:
+            if time.monotonic() < self.reconnect_at:
                 return
+            self.reconnect_at = time.monotonic() + 2
             try:
+                # SetupAPI enumeration does not open or write to the device.
+                paths = enumerate_device_paths()
+                if len(paths) != 1:
+                    with self.state_lock:
+                        self.state["error"] = ("等待副屏重新连接，接入后将自动恢复投屏。" if not paths
+                                               else "检测到多块副屏，无法自动选择设备。")
+                    return
                 self.start()
             except Exception as exc:
-                # Leave HTTP controls available for a manual retry. No retry loop.
-                LOG.warning("Automatic display resume failed: %s", exc)
+                with self.state_lock:
+                    self.state["error"] = str(exc)
+                LOG.warning("Display reconnect failed; retrying with backoff: %s", exc)
+            # A renderer launch alone does not prove recovery. Only a successful
+            # physical frame resets backoff, preventing a render/crash hot loop.
+            with self.state_lock:
+                self.reconnect_at = time.monotonic() + self.reconnect_delay
+                self.reconnect_delay = min(30.0, self.reconnect_delay * 2)
 
     def start(self):
         with self.lifecycle_lock:
@@ -255,7 +274,6 @@ class Studio:
             with self.state_lock:
                 self.state["connected"] = False
             if remember:
-                self.resume_pending = False
                 self._remember_streaming(False)
             LOG.info("Display session stopped; last frame retained")
 
@@ -398,6 +416,8 @@ class Studio:
             s["last_ms"] = round(ms, 2)
             s["bytes"] += len(payload)
             s["last_ack"] = now
+            self.reconnect_delay = 2.0
+            self.reconnect_at = 0.0
             tick = time.monotonic()
             self.frame_times.append(tick)
             s["effective_fps"] = round((len(self.frame_times)-1)/max(.01, tick-self.frame_times[0]), 2) if len(self.frame_times)>1 else 0
@@ -546,7 +566,7 @@ def main():
     try:
         # The listening socket and app are ready; keep serving HTTP while USB
         # connects so the renderer and the user's controls remain responsive.
-        threading.Thread(target=app.resume_on_startup, name="studio-resume", daemon=True).start()
+        threading.Thread(target=app.maintain_connection, name="studio-reconnect", daemon=True).start()
         server.serve_forever(poll_interval=.2)
     except KeyboardInterrupt:
         pass
