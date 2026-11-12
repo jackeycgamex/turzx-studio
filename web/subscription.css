@@ -1,11 +1,19 @@
 /* Palette: VS Code's built-in 2026 Light, adapted for the physical display. */
 .subscription-screen{--sub-fg:#202020;--sub-muted:#606060;--sub-line:#e2e2e5;--sub-accent:#0069cc;--sub-warning:#895503;--sub-panel:#fafafd;display:flex;flex-direction:column;width:100%;height:100%;padding:0 44px;background:#fff;color:var(--sub-fg);font-family:'Segoe UI','Microsoft YaHei',sans-serif;font-variant-numeric:tabular-nums}
 .subscription-screen ::selection{background:#bfdaf2;color:#202020}
+.subscription-screen.has-wallpaper{position:relative;isolation:isolate;--sub-panel:transparent;text-shadow:0 1px 2px #fff,0 0 8px rgb(255 255 255 / 85%)}
+.subscription-screen.wallpaper-it{--sub-fg:#162938;--sub-muted:#304b5b;--sub-line:#829dad66;--sub-accent:#126187;--sub-numeric:#124e6c}
+.subscription-screen.wallpaper-anime{--sub-fg:#29243d;--sub-muted:#4c425f;--sub-line:#a69ab866;--sub-accent:#655088;--sub-numeric:#51406e}
+.subscription-screen.wallpaper-dragon{--sub-fg:#16392e;--sub-muted:#375b4d;--sub-line:#7d9f8f66;--sub-accent:#27745a;--sub-numeric:#1d5c46}
+.subscription-wallpaper{position:absolute;inset:0;z-index:-1;pointer-events:none;overflow:hidden;opacity:var(--wallpaper-opacity,.75)}
+.subscription-wallpaper img{display:block;width:100%;height:100%;object-fit:cover}
+.has-wallpaper .subscription-head,.has-wallpaper .subscription-footer{background:transparent;border-color:transparent}
+.has-wallpaper .subscription-account-state{background:transparent;border-color:var(--sub-line)}
+.has-wallpaper .subscription-head h1,.has-wallpaper .feature-cell h2{font-weight:600}
+.has-wallpaper .quota-track,.has-wallpaper .shared-meter{background:rgb(255 255 255 / 65%)}
 .subscription-head{height:88px;flex:none;display:flex;align-items:center;justify-content:space-between;gap:24px;border-bottom:1px solid var(--sub-line);background:var(--sub-panel);margin:0 -44px;padding:0 44px}
 .subscription-head h1{font-size:32px;font-weight:500;line-height:1.3;margin:0;display:flex;align-items:center;gap:17px}
 .subscription-code-mark{width:31px;height:31px;fill:none;stroke:var(--sub-accent);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
-.subscription-status{font-size:23px;color:var(--sub-accent);line-height:1.5;white-space:nowrap}
-.subscription-status.warning{color:var(--sub-warning)}
 .subscription-identity{display:flex;align-items:center;justify-content:space-between;gap:24px;height:116px;flex:none;border-bottom:1px solid var(--sub-line);min-width:0}
 .subscription-identity>div{display:flex;align-items:baseline;gap:24px;min-width:0}
 .subscription-identity h2{font-size:35px;font-weight:500;line-height:1.25;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -18,7 +26,7 @@
 .quota-heading{display:flex;justify-content:space-between;align-items:baseline;gap:20px;min-height:42px}
 .quota-heading h2{font-size:30px;font-weight:450;margin:0;line-height:1.3}
 .quota-heading>span{font-size:22px;color:var(--sub-muted);white-space:nowrap}
-.quota-value{font-family:'Cascadia Code',Consolas,monospace;font-size:120px;font-weight:400;line-height:1.15;letter-spacing:-3px;color:#0550ae}
+.quota-value{font-family:'Cascadia Code',Consolas,monospace;font-size:120px;font-weight:400;line-height:1.15;letter-spacing:-3px;color:var(--sub-numeric,#0550ae)}
 .quota-value>span{font-size:42px;letter-spacing:0;margin-left:12px}
 .quota-track{height:12px;flex:none;background:#eaeaea;border-radius:0;margin:12px 0 18px;overflow:hidden}
 .quota-track i{display:block;height:100%;background:var(--sub-accent)}
@@ -76,7 +84,7 @@
 .feature-cell:not(:last-child){border-right:1px solid var(--sub-line);padding-right:28px}
 .feature-cell h2{font-size:28px;font-weight:450;line-height:1.3;margin:0}
 .feature-source{font-size:22px;color:var(--sub-muted);line-height:1.35;margin:13px 0 11px}
-.feature-value{font-family:'Cascadia Code',Consolas,monospace;color:#0550ae;font-size:88px;line-height:1.1;letter-spacing:-2px;white-space:nowrap}
+.feature-value{font-family:'Cascadia Code',Consolas,monospace;color:var(--sub-numeric,#0550ae);font-size:88px;line-height:1.1;letter-spacing:-2px;white-space:nowrap}
 .feature-value>span{font-family:'Segoe UI','Microsoft YaHei',sans-serif;font-size:28px;margin-left:9px;letter-spacing:0}
 .feature-reset{margin-top:auto;display:flex;flex-direction:column;gap:12px;min-width:0}
 .feature-reset strong{font-size:24px;font-weight:400;line-height:1.4}
@@ -105,7 +113,6 @@
   .subscription-screen{padding:0 44px}
   .subscription-head{height:96px;gap:16px}
   .subscription-head h1{font-size:31px}
-  .subscription-status{font-size:22px}
   .subscription-identity{height:146px;align-items:flex-start;justify-content:center;flex-direction:column;gap:17px}
   .subscription-identity>div{width:100%;justify-content:space-between;gap:16px}
   .subscription-identity h2{font-size:35px;max-width:70%}

@@ -1,25 +1,32 @@
 /* Scoped to the OpenAI scene; uses VS Code Light's neutral panels and blue focus. */
-body.openai-workbench{background:#fff;color:#202020;font-family:'Segoe UI','Microsoft YaHei',sans-serif;accent-color:#0069cc}
-.openai-workbench ::selection{background:#bfdaf2;color:#202020}
+.openai-workbench[data-subscription-background=it]{--workbench-accent:#126187;--workbench-accent-hover:#124e6c;--workbench-selection:#d9eaf3}
+.openai-workbench[data-subscription-background=anime]{--workbench-accent:#655088;--workbench-accent-hover:#51406e;--workbench-selection:#e9e1f1}
+.openai-workbench[data-subscription-background=dragon]{--workbench-accent:#27745a;--workbench-accent-hover:#1d5c46;--workbench-selection:#daebe2}
+.openai-workbench .subscription-transparency{margin:16px 0 22px}
+.openai-workbench .subscription-transparency input{width:100%;margin:10px 0 0;accent-color:var(--workbench-accent,#0069cc)}
+.openai-workbench .subscription-transparency output{font-variant-numeric:tabular-nums;color:var(--workbench-accent,#0069cc)}
+.openai-workbench .subscription-transparency input:disabled{opacity:.4;cursor:default}
+body.openai-workbench{background:#fff;color:#202020;font-family:'Segoe UI','Microsoft YaHei',sans-serif;accent-color:var(--workbench-accent,#0069cc)}
+.openai-workbench ::selection{background:var(--workbench-selection,#bfdaf2);color:#202020}
 .openai-workbench .topbar,.openai-workbench .channels,.openai-workbench .mixer{background:#fafafd;border-color:#e2e2e5}
 .openai-workbench .stage{background:#fff}
 .openai-workbench .brand,.openai-workbench h1,.openai-workbench h2,.openai-workbench h3,.openai-workbench .device-name{color:#202020}
-.openai-workbench .brand svg,.openai-workbench .brand b{color:#0069cc}
+.openai-workbench .brand svg,.openai-workbench .brand b{color:var(--workbench-accent,#0069cc)}
 .openai-workbench .page-button{color:#606060;border-radius:3px}
 .openai-workbench .page-button[aria-current=true]{background:#eaeaea;color:#202020}
-.openai-workbench .page-button[aria-current=true] svg{color:#0069cc}
+.openai-workbench .page-button[aria-current=true] svg{color:var(--workbench-accent,#0069cc)}
 .openai-workbench .page-button:hover{background:#f0f0f3}
 .openai-workbench .page-button small,.openai-workbench .workspace-name,.openai-workbench .sidebar-bottom,.openai-workbench .section-title,.openai-workbench .stage-heading p,.openai-workbench .scene-guidance,.openai-workbench .field-hint{color:#606060}
 .openai-workbench .preview-stage{background:#fafafd;border:1px solid #e2e2e5;border-radius:4px}
 .openai-workbench .preview-shell{background:#fff;border:1px solid #d8d8d8;border-radius:3px;box-shadow:none;padding:0}
-.openai-workbench .primary{background:#0069cc;color:#fff;border-color:#0069cc;border-radius:3px}
-.openai-workbench .primary:hover{background:#0063c1}
+.openai-workbench .primary{background:var(--workbench-accent,#0069cc);color:#fff;border-color:var(--workbench-accent,#0069cc);border-radius:3px}
+.openai-workbench .primary:hover{background:var(--workbench-accent-hover,#0063c1)}
 .openai-workbench .secondary{background:#eaeaea;color:#202020;border-color:#d8d8d8;border-radius:3px}
 .openai-workbench .secondary:hover{background:#f2f3f4}
-.openai-workbench .text-button,.openai-workbench .source-links a{color:#0069cc}
+.openai-workbench .text-button,.openai-workbench .source-links a{color:var(--workbench-accent,#0069cc)}
 .openai-workbench select,.openai-workbench textarea{background:#fff;border-color:#d8d8d8;color:#202020;border-radius:3px}
-.openai-workbench button:focus-visible,.openai-workbench select:focus-visible,.openai-workbench textarea:focus-visible,.openai-workbench input:focus-visible,.openai-workbench a:focus-visible{outline:2px solid #0069cc;outline-offset:3px}
-.openai-workbench input[type=checkbox]:checked{background:#0069cc;border-color:#0069cc}
+.openai-workbench button:focus-visible,.openai-workbench select:focus-visible,.openai-workbench textarea:focus-visible,.openai-workbench input:focus-visible,.openai-workbench a:focus-visible{outline:2px solid var(--workbench-accent,#0069cc);outline-offset:3px}
+.openai-workbench input[type=checkbox]:checked{background:var(--workbench-accent,#0069cc);border-color:var(--workbench-accent,#0069cc)}
 .openai-workbench .control-section,.openai-workbench .session-strip,.openai-workbench .scene-guidance{border-color:#e2e2e5}
-.openai-workbench .notice.success{background:#e6f2fa;border-color:#b6d7ee;color:#0550ae}
-.openai-workbench .connection.online i,.openai-workbench .connection.active i{background:#0069cc}
+.openai-workbench .notice.success{background:#e6f2fa;border-color:#b6d7ee;color:var(--workbench-accent,#0550ae)}
+.openai-workbench .connection.online i,.openai-workbench .connection.active i{background:var(--workbench-accent,#0069cc)}

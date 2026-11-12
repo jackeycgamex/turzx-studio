@@ -16,6 +16,8 @@ const data = {...source,account:{plan_type:'pro',email:'a•••@example.com'}
     expires_at:Date.parse('2027-01-12T08:00:00Z')/1000,purchase_platform:'chatgpt_mobile_android',currency:'USD'}
 };
 const overview=render(data);
+const overviewHeadings=[...overview.matchAll(/<section class="feature-cell[^"]*"><h2>(.*?)<\/h2>/g)].map(match=>match[1]);
+assert.deepEqual(overviewHeadings,['Work / Codex','图像生成','深度研究']);
 assert.match(overview,/深度研究/);
 assert.match(overview,/图像生成/);
 assert.match(overview,/1,000<span>次<\/span>/);
@@ -55,7 +57,6 @@ assert.match(render(restricted,'entitlements'),/有模型受限/);
 const cancelled=structuredClone(data); cancelled.billing.will_renew=false;
 assert.match(render(cancelled,'billing'),/不再自动续费/);
 const partial=structuredClone(data); partial.chatgpt_feature_limits.status='stale';
-assert.match(render(partial),/部分来源未同步/);
 assert.match(render(partial),/feature-cell old/);
 assert.doesNotMatch(render(partial),/shared-cell old/);
 const missing=structuredClone(data); missing.chatgpt_feature_limits.items[0].remaining=null;

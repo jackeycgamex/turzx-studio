@@ -35,6 +35,8 @@ npm ci
 .\启动.cmd
 ```
 
+屏幕方向、当前页面、发送帧率，以及 OpenAI 订阅页的背景和透明度会自动保存到本机 `runtime/display-preferences.json`，重启服务后恢复。
+
 启动器优先使用项目的 `.venv\Scripts\python.exe`，否则使用 PATH 中的 Python。已有服务时会复用。也可以在终端运行：
 
 ```powershell

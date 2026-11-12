@@ -40,6 +40,14 @@
     if(state.error&&state.error!==lastError){notify(String(state.error),false,true);lastError=state.error;}else if(!state.error)lastError=null;
     const motion=state.animation||{};
     $('subscription-controls').hidden=state.page!=='openai';
+    document.body.dataset.subscriptionBackground=state.subscription_background||'none';
+    $('subscription-transparency').disabled=!state.subscription_background||state.subscription_background==='none';
+    if(document.activeElement!==$('subscription-transparency')){
+      const transparency=state.subscription_background_transparency??25;
+      $('subscription-transparency').value=transparency;
+      $('subscription-transparency-value').value=transparency+'%';
+    }
+    if(document.activeElement!==$('subscription-background'))$('subscription-background').value=state.subscription_background||'none';
     if(document.activeElement!==$('subscription-view'))$('subscription-view').value=state.subscription_view||'overview';
     $('subscription-auto').checked=Boolean(state.subscription_auto);
     const subscription=state.subscription||{},buckets=subscription.buckets||[];
@@ -78,6 +86,9 @@
   $('page-list').addEventListener('click',e=>{const button=e.target.closest('[data-page]');if(button)control({page:button.dataset.page});});
   $('rotation').addEventListener('change',e=>control({rotation:Number(e.target.value)}));$('fps').addEventListener('change',e=>control({fps:Number(e.target.value)}));$('interval').addEventListener('change',e=>control({interval:Number(e.target.value)}));$('auto').addEventListener('change',e=>control({auto:e.target.checked}));
   $('subscription-view').addEventListener('change',e=>control({subscription_view:e.target.value,subscription_auto:false}));
+  $('subscription-background').addEventListener('change',e=>control({subscription_background:e.target.value}));
+  $('subscription-transparency').addEventListener('input',e=>$('subscription-transparency-value').value=e.target.value+'%');
+  $('subscription-transparency').addEventListener('change',e=>control({subscription_background_transparency:Number(e.target.value)}));
   $('subscription-bucket').addEventListener('change',e=>control({subscription_bucket:e.target.value}));
   $('subscription-auto').addEventListener('change',e=>control({subscription_auto:e.target.checked}));
   $('subscription-refresh').addEventListener('click',()=>control({action:'subscription_refresh'},'已请求刷新，短时间内的重复请求会合并。'));

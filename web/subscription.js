@@ -55,7 +55,12 @@
     if (!data.account) return empty(data);
     const features=data.chatgpt_feature_limits||{},bill=data.billing||{};
     const items=features.items?.length?features.items.slice(0,2):[{name:'深度研究',remaining:null},{name:'图像生成',remaining:null}];
-    return `<div class="subscription-identity"><div><h2>${safe(planName(data))}</h2><span>${safe(data.account.email || '已连接账户')}</span></div><span class="subscription-bucket">ChatGPT + Work</span></div><div class="subscription-content combined-quotas">${items.map(item=>featureCell(item,features,offline)).join('')}${sharedCell(data,bucket,offline)}</div><div class="subscription-extras combined-extras"><div class="${isOld(bill,offline)?'source-old':''}"><span>${isOld(bill,offline)?'续费 · 旧数据':'下次续费'}</span><strong>${safe(renewal(bill))}</strong></div><div><span>自动续费</span><strong>${bill.will_renew===true?'已开启':bill.will_renew===false?'已关闭':'来源未提供'}</strong></div><div><span>额外 credits</span><strong>${safe(creditBalance(bucket))}</strong></div><div><span>重置机会</span><strong>${Number.isInteger(data.reset_count)?data.reset_count+' 次':'来源未提供'}</strong></div></div>`;
+    const cells=items.map(item=>featureCell(item,features,offline));
+    const researchIndex=items.findIndex(item=>item.id==='deep_research'||item.name==='深度研究');
+    const shared=sharedCell(data,bucket,offline);
+    if(researchIndex>=0){const [research]=cells.splice(researchIndex,1);cells.push(research);}
+    cells.unshift(shared);
+    return `<div class="subscription-identity"><div><h2>${safe(planName(data))}</h2><span>${safe(data.account.email || '已连接账户')}</span></div><span class="subscription-bucket">ChatGPT + Work</span></div><div class="subscription-content combined-quotas">${cells.join('')}</div><div class="subscription-extras combined-extras"><div class="${isOld(bill,offline)?'source-old':''}"><span>${isOld(bill,offline)?'续费 · 旧数据':'下次续费'}</span><strong>${safe(renewal(bill))}</strong></div><div><span>自动续费</span><strong>${bill.will_renew===true?'已开启':bill.will_renew===false?'已关闭':'来源未提供'}</strong></div><div><span>额外 credits</span><strong>${safe(creditBalance(bucket))}</strong></div><div><span>重置机会</span><strong>${Number.isInteger(data.reset_count)?data.reset_count+' 次':'来源未提供'}</strong></div></div>`;
   }
   function billing(data, offline) {
     if (!data.account) return empty(data);
@@ -80,18 +85,17 @@
     const pages=Math.max(1,Math.ceil(allRows.length/4)),page=Math.floor(Date.now()/15000)%pages,rows=allRows.slice(page*4,page*4+4);
     return `<div class="subscription-identity"><h2>ChatGPT 功能额度</h2><span>${pages>1?`明细 ${page+1}/${pages} · 15 秒换页`:'次数与可用状态'}</span></div><div class="subscription-content subscription-entitlements"><div class="entitlement-row entitlement-head"><span>功能</span><span>剩余 / 状态</span><span>重置 / 限制 · 北京</span></div>${rows.map(row=>`<div class="entitlement-row ${row.old?'source-old':''}">${row.cells.map(cell=>`<span>${safe(cell)}</span>`).join('')}</div>`).join('')}</div><p class="subscription-note">${safe(source.error||voice.error||'“可用”不代表无限；聊天条数与语音分钟数未返回时不推算。')}</p>`;
   }
-  function render(data={}, view='overview', selected='codex', disconnected=false) {
+  function render(data={}, view='overview', selected='codex', disconnected=false, background='none', transparency=25) {
+    const hasBackground=['it','anime','dragon'].includes(background);
+    const opacity=1-Math.min(100,Math.max(0,finite(transparency)?transparency:25))/100;
+    const wallpaper=hasBackground?`<picture class="subscription-wallpaper" aria-hidden="true"><source media="(max-aspect-ratio: 1/1)" srcset="assets/subscription/${background}-portrait-screen.png?v=2"><img src="assets/subscription/${background}-landscape-screen.png?v=2" alt=""></picture>`:'';
     const source=view==='billing'?(data.billing||{}):view==='entitlements'?(data.chatgpt_feature_limits||{}):data;
     const old=isOld(source,disconnected);
-    const sources=view==='billing'?[data.billing||{},data.plan_pricing||{}]:view==='entitlements'?[data.chatgpt_feature_limits||{},data.chatgpt_voice||{}]:[data,data.billing||{},data.chatgpt_feature_limits||{}];
-    const partial=sources.some(s=>s.status!=='live'||isOld(s,disconnected));
-    const status=old?'已过期 · 上次读取':source.status==='live'?(partial?'部分来源未同步':data.refreshing?'正在更新':'已同步'):source.status==='loading'?'正在读取':source.status==='disconnected'?'未连接':'读取失败';
     const buckets = data.buckets || [], bucket = buckets.find(item=>item.id===selected) || buckets[0];
     const names = {overview:'OpenAI 订阅', billing:'套餐与续费', entitlements:'ChatGPT 额度明细'};
-    const page = Object.keys(names).indexOf(view)+1 || 1;
     const body = view==='billing'?billing(data,disconnected):view==='entitlements'?entitlements(data,bucket,disconnected):overview(data,bucket,disconnected);
     const stamp=view==='overview'?`ChatGPT ${syncTime(data.chatgpt_feature_limits)} · Work ${syncTime(data)}`:view==='billing'?`账单 ${syncTime(source)} · 标价 ${syncTime(data.plan_pricing)}`:`额度 ${syncTime(source)} · 语音 ${syncTime(data.chatgpt_voice)}`;
-    return `<section class="subscription-screen ${old?'is-stale':''} ${view==='overview'?'combined-screen':''}"><header class="subscription-head"><h1><svg class="subscription-code-mark" viewBox="0 0 32 32" aria-hidden="true"><path d="m10 8-7 8 7 8m12-16 7 8-7 8M19 5l-6 22"/></svg>${names[view]||names.overview}</h1><span class="subscription-status ${old||partial||source.status==='error'?'warning':''}">${status}</span></header>${body}<footer class="subscription-footer"><span>${safe(stamp)}</span><span>${page} / 3</span></footer></section>`;
+    return `<section class="subscription-screen ${old?'is-stale':''} ${view==='overview'?'combined-screen':''} ${hasBackground?`has-wallpaper wallpaper-${background}`:''}" style="--wallpaper-opacity:${opacity}">${wallpaper}<header class="subscription-head"><h1><svg class="subscription-code-mark" viewBox="0 0 32 32" aria-hidden="true"><path d="m10 8-7 8 7 8m12-16 7 8-7 8M19 5l-6 22"/></svg>${names[view]||names.overview}</h1></header>${body}<footer class="subscription-footer"><span>${safe(stamp)}</span></footer></section>`;
   }
   window.TurzxSubscription = {render, planName, bucketName, creditBalance};
 })();

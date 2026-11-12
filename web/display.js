@@ -47,7 +47,7 @@
   function mediaPage(){return `<section class="screen media-screen">${header('音乐一隅','未接入媒体源')}<div class="screen-main media-layout"><div class="record-art" aria-hidden="true"><div class="record-label"></div></div><div class="media-copy"><h2>留一个位置<br>给喜欢的声音。</h2><p>接入播放器后，<br>这里将显示封面、曲目与进度。</p><div class="media-source-state">当前没有媒体数据</div></div></div>${footer('播放信息尚未接入 · 不显示模拟曲目')}</section>`;}
   function guidePage(){return `<section class="screen guide-screen">${header('一块屏幕，更多可能','能力地图')}<div class="screen-main guide-layout"><section class="guide-column"><h2>现在可体验</h2><p class="guide-intro">本机数据与生成画面</p><ul class="guide-list"><li>性能 / 网络<small>真实采样与历史曲线</small></li><li>时钟 / 专注<small>时间、倒计时与便签</small></li><li>氛围 / 校准<small>原创图形与显示检查</small></li></ul></section><section class="guide-column"><h2>等待数据源</h2><p class="guide-intro">接入后才呈现真实内容</p><ul class="guide-list"><li>媒体 / 天气<small>播放器、城市与接口</small></li><li>任务 / 训练<small>进度、阶段与提醒</small></li><li>温度 / 功耗<small>兼容的传感器接口</small></li></ul></section><section class="guide-column"><h2>仍需验证</h2><p class="guide-intro">不从产品名称推断</p><ul class="guide-list"><li>触控 / 音频<small>未确认硬件能力</small></li><li>离线播放<small>存储与固件支持</small></li><li>扩展桌面<small>官网列出，尚待实测</small></li></ul></section></div>${footer('USB 图像输出 · 实际刷新能力以本机实测为准',false)}</section>`;}
   function calibratePage(){const bars=Array.from({length:8},()=>'<i></i>').join(''),gray=Array.from({length:11},(_,i)=>{let c=Math.round(i*25.5);return `<i style="background:rgb(${c},${c},${c})"></i>`;}).join('');return `<section class="screen calibrate-screen"><span class="edge-label tl">TL</span><span class="edge-label tr">TR</span><span class="edge-label bl">BL</span><span class="edge-label br">BR</span>${header('显示校准',`${innerWidth} × ${innerHeight}`)}<div class="screen-main calibrate-layout"><div class="calibration-bars">${bars}</div><div class="grayscale">${gray}</div><div class="calibration-middle"><div class="type-specimens"><span>24 px · 看清每一个细节 0123456789</span><span>28 px · 清晰来自合适的距离</span><span>32 px · 阅读舒适，信息从容</span><span>40 px · 大字，看得见</span></div><div class="circle-test" aria-label="正圆应没有拉伸"></div></div></div>${footer('四角完整 · 正圆不变形 · 灰阶可分辨',false)}</section>`;}
-  const pages={system:systemPage,network:networkPage,clock:clockPage,focus:focusPage,ambient:ambientPage,openai:()=>window.TurzxSubscription.render(state.subscription,state.subscription_view,state.subscription_bucket,failed),media:mediaPage,guide:guidePage,calibrate:calibratePage};
+  const pages={system:systemPage,network:networkPage,clock:clockPage,focus:focusPage,ambient:ambientPage,openai:()=>window.TurzxSubscription.render(state.subscription,state.subscription_view,state.subscription_bucket,failed,state.subscription_background,state.subscription_background_transparency),media:mediaPage,guide:guidePage,calibrate:calibratePage};
   function paintAmbient(){
     const canvas=document.getElementById('ambient-canvas');if(!canvas||(!renderer&&document.hidden))return;
     const motion={preset:'orbit',speed:1,detail:'balanced',show_clock:true,paused:false,seed:52,time:0,...state.animation};
@@ -67,7 +67,9 @@
   window.renderFrame = async (nextState,nextMetrics) => {
     if(nextState){state={...state,...nextState};stateReceivedAt=performance.now();}
     if(nextMetrics)metrics=nextMetrics;
-    failed=false;await document.fonts.ready;render();window.renderReady=true;
+    failed=false;await document.fonts.ready;render();
+    await Promise.all([...root.querySelectorAll('.subscription-wallpaper img')].map(img=>img.decode().catch(()=>{})));
+    window.renderReady=true;
   };
   async function poll(){try{const [sr,mr]=await Promise.all([fetch('/api/state',{cache:'no-store'}),fetch('/api/metrics',{cache:'no-store'})]);if(!sr.ok||!mr.ok)throw new Error('poll');await window.renderFrame(await sr.json(),await mr.json());}catch{failed=true;render();window.renderReady=true;}}
   function animate(timestamp){

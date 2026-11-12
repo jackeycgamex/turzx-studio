@@ -24,6 +24,9 @@
 <div class="button-pair"><button id="animation-pause" class="secondary" aria-pressed="false">暂停动画</button><button id="animation-seed" class="text-button">换一幅</button></div>
 <p id="animation-performance" class="field-hint">开始投屏后显示本机实际速度。</p><p class="field-hint">速度控制运动节奏；发送帧率控制更新频率。</p></section>
 <section id="subscription-controls" class="control-section" hidden><h3>OpenAI 订阅</h3>
+<label class="control-row" for="subscription-background"><span>背景</span><select id="subscription-background"><option value="none">空背景</option><option value="it">IT · 冰蓝电路</option><option value="anime">动漫 · 海滨晨光</option><option value="dragon">OpenAI · 龙娘</option></select></label>
+<p class="field-hint">背景随屏幕方向切换横竖版，背景与透明度自动保存。</p>
+<div class="subscription-transparency"><label class="control-row" for="subscription-transparency"><span>背景透明度</span><output id="subscription-transparency-value" for="subscription-transparency">25%</output></label><input id="subscription-transparency" type="range" min="0" max="100" step="1" value="25" aria-describedby="subscription-transparency-hint"><p id="subscription-transparency-hint" class="field-hint">0% 原图 · 100% 纯底，松开后同步到副屏。</p></div>
 <label class="control-row" for="subscription-view"><span>内容</span><select id="subscription-view"><option value="overview">额度总览</option><option value="billing">套餐与续费</option><option value="entitlements">ChatGPT 额度</option></select></label>
 <label id="subscription-bucket-row" class="control-row" for="subscription-bucket" hidden><span>额度分组</span><select id="subscription-bucket" aria-label="额度分组"></select></label>
 <div class="switch-row"><label for="subscription-auto">详情轮播 · 15 秒</label><input id="subscription-auto" type="checkbox" role="switch"></div>

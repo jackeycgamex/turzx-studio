@@ -14,6 +14,7 @@ from pathlib import Path
 import secrets
 import shutil
 import subprocess
+import tempfile
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -30,7 +31,50 @@ WEB = ROOT / "web"
 RUNTIME = ROOT / "runtime"
 PAGES = ("system", "network", "clock", "focus", "ambient", "openai", "media", "guide", "calibrate")
 SUBSCRIPTION_VIEWS = ("overview", "billing", "entitlements")
+SUBSCRIPTION_BACKGROUNDS = ("none", "it", "anime", "dragon")
+DISPLAY_PREFERENCES = ("subscription_background", "subscription_background_transparency", "rotation", "page", "fps")
 LOG = logging.getLogger("turzx")
+
+
+def load_display_preferences(path):
+    try:
+        saved = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError):
+        LOG.warning("Unable to read display preferences; using defaults.")
+        return {}
+    if not isinstance(saved, dict):
+        return {}
+    result = {}
+    if saved.get("subscription_background") in SUBSCRIPTION_BACKGROUNDS:
+        result["subscription_background"] = saved["subscription_background"]
+    value = saved.get("subscription_background_transparency")
+    if type(value) is int and 0 <= value <= 100:
+        result["subscription_background_transparency"] = value
+    if saved.get("page") in PAGES:
+        result["page"] = saved["page"]
+    for key, choices in (("rotation", (0, 90, 180, 270)), ("fps", (1, 2, 5, 10))):
+        if type(saved.get(key)) is int and saved[key] in choices:
+            result[key] = saved[key]
+    return result
+
+
+def save_display_preferences(path, state):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
+                                         prefix="display-preferences-", suffix=".tmp", delete=False) as output:
+            temporary = Path(output.name)
+            json.dump({key: state[key] for key in DISPLAY_PREFERENCES}, output, indent=2)
+            output.write("\n")
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(temporary, path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 
 class SessionPaused(Exception):
@@ -68,7 +112,11 @@ class Studio:
             "focus": {"duration": 1500, "remaining": 1500, "running": False},
             "note": "把注意力留给真正重要的事。",
             "subscription_view": "overview", "subscription_auto": False, "subscription_bucket": "codex",
+            "subscription_background": "none",
+            "subscription_background_transparency": 25,
         }
+        self.preferences_path = RUNTIME / "display-preferences.json"
+        self.state.update(load_display_preferences(self.preferences_path))
         self.clock = threading.Thread(target=self._clock, name="studio-clock", daemon=True)
         self.clock.start()
 
@@ -90,7 +138,13 @@ class Studio:
                     self.state["focus"].update(remaining=0, running=False)
                 if self.state["auto"] and now-self.last_page_at >= self.state["interval"]:
                     i = PAGES.index(self.state["page"])
-                    self.state["page"] = PAGES[(i+1) % len(PAGES)]
+                    next_page = PAGES[(i+1) % len(PAGES)]
+                    try:
+                        save_display_preferences(self.preferences_path, {**self.state, "page": next_page})
+                    except OSError:
+                        LOG.warning("Unable to save auto-rotation page; keeping current page.")
+                    else:
+                        self.state["page"] = next_page
                     self.last_page_at = now
                 if self.state["page"] == "openai" and self.state["subscription_auto"] and now-self.last_subscription_page_at >= 15:
                     index = SUBSCRIPTION_VIEWS.index(self.state["subscription_view"])
@@ -191,13 +245,17 @@ class Studio:
         if not isinstance(changes, dict):
             raise ValueError("请求必须为 JSON 对象。")
         allowed = {"page", "rotation", "fps", "auto", "interval", "note", "brightness", "action", "focus_duration", "animation",
-                   "subscription_view", "subscription_auto", "subscription_bucket"}
+                   "subscription_view", "subscription_auto", "subscription_bucket", "subscription_background", "subscription_background_transparency"}
         if set(changes)-allowed:
             raise ValueError("存在不支持的设置项。")
         action = changes.get("action")
         if action not in (None, "start", "stop", "focus_start", "focus_pause", "focus_reset", "shutdown", "subscription_refresh"):
             raise ValueError("不支持的操作。")
         for key, value in changes.items():
+            if key == "subscription_background_transparency" and (type(value) is not int or not 0 <= value <= 100):
+                raise ValueError("背景透明度应为 0 到 100 的整数。")
+            if key == "subscription_background" and value not in SUBSCRIPTION_BACKGROUNDS:
+                raise ValueError("未知订阅背景。")
             if key == "subscription_view" and value not in SUBSCRIPTION_VIEWS:
                 raise ValueError("未知订阅页面。")
             if key == "subscription_auto" and type(value) is not bool:
@@ -226,10 +284,14 @@ class Studio:
                     raise ValueError("请先开始推送，再调整亮度。")
                 self.device.brightness(changes["brightness"])
         with self.state_lock:
+            if any(key in changes for key in DISPLAY_PREFERENCES):
+                # Persist before publishing the state; a failed write must not
+                # report a setting that will be lost after a restart.
+                save_display_preferences(self.preferences_path, {**self.state, **changes})
             if "animation" in changes:
                 self.motion.update(changes["animation"])
             for key in ("page", "rotation", "fps", "auto", "interval", "note", "brightness",
-                        "subscription_view", "subscription_auto", "subscription_bucket"):
+                        "subscription_view", "subscription_auto", "subscription_bucket", "subscription_background", "subscription_background_transparency"):
                 if key in changes:
                     self.state[key] = changes[key]
             if "page" in changes or "auto" in changes:
@@ -340,13 +402,13 @@ class Handler(BaseHTTPRequestHandler):
         if not str(args[0]).startswith(("GET /api/", "POST /api/frame")):
             LOG.info(fmt, *args)
 
-    def send(self, code, body, content_type="application/json; charset=utf-8"):
+    def send(self, code, body, content_type="application/json; charset=utf-8", cache_control="no-store"):
         if not isinstance(body, bytes):
             body = json.dumps(body, ensure_ascii=False).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Cache-Control", cache_control)
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; frame-ancestors 'self'")
         self.end_headers()
@@ -379,7 +441,9 @@ class Handler(BaseHTTPRequestHandler):
         mime = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
         if mime.startswith("text/") or mime in ("application/javascript", "application/json"):
             mime += "; charset=utf-8"
-        return self.send(200, path.read_bytes(), mime)
+        # Only public, fixed wallpaper assets are reusable across display frames.
+        wallpaper = path.parent == WEB / "assets" / "subscription" and path.suffix == ".png"
+        return self.send(200, path.read_bytes(), mime, "private, max-age=3600" if wallpaper else "no-store")
 
     def do_POST(self):
         if not self.valid_host():
