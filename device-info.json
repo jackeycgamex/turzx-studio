@@ -71,7 +71,7 @@
       "id": "art",
       "name": "生成艺术与动画",
       "status": "已实现并测传输",
-      "detail": "参考主机上的截图、RGBA PNG 和 USB 传输链路约4.9 fps，不代表所有主机或面板刷新率。"
+      "detail": "四种可调程序动画；参考主机竖屏细腻模式的Canvas/RGBA PNG/USB链路约5.7–6.3 fps，不代表面板刷新率。"
     },
     {
       "id": "rotation",

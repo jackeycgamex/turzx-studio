@@ -1,0 +1,87 @@
+/* Display-only views. All account values arrive from the local read-only bridge. */
+(() => {
+  'use strict';
+  const safe = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const finite = value => typeof value === 'number' && Number.isFinite(value);
+  const dateFormat = new Intl.DateTimeFormat('zh-CN', {timeZone:'Asia/Shanghai', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false});
+  const clockFormat = new Intl.DateTimeFormat('en-GB', {timeZone:'Asia/Shanghai', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false});
+  const fullDateFormat = new Intl.DateTimeFormat('zh-CN', {timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false});
+  const dayFormat = new Intl.DateTimeFormat('zh-CN', {timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'});
+  const isOld = (source={}, offline=false) => offline || source.status==='stale' || (finite(source.observed_at) && Date.now()/1000-source.observed_at>(source.stale_seconds||180));
+  const syncTime = source => finite(source?.observed_at)?clockFormat.format(new Date(source.observed_at*1000)):'未同步';
+  const plans = {pro:'Pro', plus:'Plus', free:'Free', team:'Team', business:'Business', enterprise:'Enterprise', edu:'Edu', go:'Go'};
+  const planName = data => data.account?.plan_type ? `ChatGPT ${plans[data.account.plan_type] || data.account.plan_type}` : '套餐未提供';
+  const bucketName = bucket => bucket?.name || (bucket?.id === 'codex' ? 'Work / Codex' : bucket?.id) || 'Work / Codex';
+  const windowName = (window, index) => {
+    const minutes = window.duration_minutes;
+    if (minutes === 10080) return '周窗口';
+    if (!finite(minutes)) return `窗口 ${index+1}`;
+    return minutes % 60 === 0 ? `${minutes/60} 小时窗口` : `${minutes} 分钟窗口`;
+  };
+  const remaining = value => finite(value) ? new Intl.NumberFormat('zh-CN',{maximumFractionDigits:1}).format(value) : '—';
+  const creditBalance = bucket => {
+    const credits = bucket?.credits;
+    if (credits?.unlimited === true) return '不设上限';
+    if (credits?.balance != null && Number.isFinite(Number(credits.balance))) {
+      return new Intl.NumberFormat('zh-CN', {maximumFractionDigits:2}).format(Number(credits.balance));
+    }
+    return '来源未提供';
+  };
+  function countdown(at) {
+    if (!finite(at)) return '重置时间未提供';
+    const seconds = Math.ceil(at-Date.now()/1000);
+    if (seconds <= 0) return '等待额度更新';
+    const minutes = Math.ceil(seconds/60), days = Math.floor(minutes/1440), hours = Math.floor(minutes%1440/60);
+    if (days) return `${days} 天 ${hours} 小时后重置`;
+    if (hours) return `${hours} 小时 ${minutes%60} 分后重置`;
+    return `${minutes} 分后重置`;
+  }
+  function featureCell(item, source, offline) {
+    const old=isOld(source,offline),value=item.remaining,expired=finite(item.resets_at)&&item.resets_at<=Date.now()/1000;
+    const blocked=(source.blocked_features||[]).includes(item.id);
+    const note=old?'上次读取剩余':blocked?'当前受限':expired?'等待更新':value===0?'额度已耗尽':'剩余次数';
+    return `<section class="feature-cell ${old||expired?'old':''}"><h2>${safe(item.name)}</h2><p class="feature-source">ChatGPT · ${note}</p><div class="feature-value">${remaining(value)}${finite(value)?'<span>次</span>':''}</div><div class="feature-reset"><strong>${safe(old?'重置时间待确认':countdown(item.resets_at))}</strong><span>${finite(item.resets_at)?safe(dateFormat.format(new Date(item.resets_at*1000)))+' 重置':'来源未提供时间'}</span></div></section>`;
+  }
+  function sharedCell(data,bucket,offline) {
+    const old=isOld(data,offline),windows=bucket?.windows||[];
+    return `<section class="feature-cell shared-cell ${old?'old':''} ${windows.length>1?'compact':''}"><h2>${safe(bucketName(bucket))}</h2><div class="shared-windows">${windows.length?windows.map((w,i)=>{const expired=finite(w.resets_at)&&w.resets_at<=Date.now()/1000;return `<div class="shared-window ${expired?'old':''}"><p class="feature-source">${safe(windowName(w,i))} · ${old?'上次剩余':w.remaining_percent===0?'额度已耗尽':'共享额度剩余'}</p><div class="feature-value">${remaining(w.remaining_percent)}${finite(w.remaining_percent)?'<span>%</span>':''}</div><div class="shared-meter"><i style="width:${finite(w.remaining_percent)?w.remaining_percent:0}%"></i></div><div class="feature-reset"><strong>${safe(old?'重置时间待确认':countdown(w.resets_at))}</strong><span>${finite(w.resets_at)?safe(dateFormat.format(new Date(w.resets_at*1000)))+' 重置':'来源未提供时间'}</span></div></div>`;}).join(''):'<p class="feature-source">尚未读取到共享额度</p><div class="feature-value">—</div>'}</div></section>`;
+  }
+  const renewal = (bill,full=false) => bill.will_renew===false?'不再自动续费':finite(bill.renews_at)?(full?fullDateFormat:dateFormat).format(new Date(bill.renews_at*1000)):'来源未提供';
+  function empty(data) {
+    const loading = data.status === 'loading';
+    return `<div class="subscription-empty"><h2>${loading?'正在读取订阅数据':data.account?'暂时无法读取额度':'等待连接账户'}</h2><p>${safe(data.error || (loading?'正在连接本机 Codex 登录账户。':'请在电脑端登录 Codex，再刷新订阅数据。'))}</p><div class="subscription-empty-values"><div>套餐<strong>—</strong></div><div>剩余额度<strong>—</strong></div><div>重置时间<strong>—</strong></div></div></div>`;
+  }
+  function overview(data, bucket, offline) {
+    if (!data.account) return empty(data);
+    const features=data.chatgpt_feature_limits||{},bill=data.billing||{};
+    const items=features.items?.length?features.items.slice(0,2):[{name:'深度研究',remaining:null},{name:'图像生成',remaining:null}];
+    return `<div class="subscription-identity"><div><h2>${safe(planName(data))}</h2><span>${safe(data.account.email || '已连接账户')}</span></div><span class="subscription-bucket">ChatGPT + Work</span></div><div class="subscription-content combined-quotas">${items.map(item=>featureCell(item,features,offline)).join('')}${sharedCell(data,bucket,offline)}</div><div class="subscription-extras combined-extras"><div class="${isOld(bill,offline)?'source-old':''}"><span>${isOld(bill,offline)?'续费 · 旧数据':'下次续费'}</span><strong>${safe(renewal(bill))}</strong></div><div><span>自动续费</span><strong>${bill.will_renew===true?'已开启':bill.will_renew===false?'已关闭':'来源未提供'}</strong></div><div><span>额外 credits</span><strong>${safe(creditBalance(bucket))}</strong></div><div><span>重置机会</span><strong>${Number.isInteger(data.reset_count)?data.reset_count+' 次':'来源未提供'}</strong></div></div>`;
+  }
+  function billing(data) {
+    if (!data.account) return empty(data);
+    const b=data.billing||{},platforms={chatgpt_mobile_android:'Google Play',chatgpt_mobile_ios:'App Store',chatgpt_web:'ChatGPT 网页',web:'ChatGPT 网页'};
+    const period=finite(b.period_start)&&finite(b.period_end)?`${dayFormat.format(new Date(b.period_start*1000))} – ${dayFormat.format(new Date(b.period_end*1000))}`:'来源未提供';
+    const rows=[['当前账期',period],['下次续费',renewal(b,true)],['自动续费',b.will_renew===true?'已开启':b.will_renew===false?'已关闭':'来源未提供'],['订阅周期',({monthly:'每月',annual:'每年',yearly:'每年'})[b.billing_period]||b.billing_period||'来源未提供'],['续费金额',b.currency?`实扣金额未提供 · ${b.currency}`:'来源未提供']];
+    return `<div class="subscription-billing subscription-content"><div class="subscription-account"><h2>${safe(planName(data))}</h2><p>${b.active===true?'订阅有效':b.active===false?'订阅未生效':'订阅状态未提供'}</p><p class="subscription-email">${safe(data.account.email || '账户邮箱未提供')}</p><div class="subscription-account-state"><span>订阅渠道</span><strong>${safe(platforms[b.purchase_platform]||b.purchase_platform||'来源未提供')}</strong><small>${b.is_delinquent===true?'账户存在欠款，请查看官方账单':'续费信息来自 ChatGPT 账户'}</small></div></div><dl>${rows.map(([label,value])=>`<div><dt>${label}</dt><dd>${safe(value)}</dd></div>`).join('')}</dl></div><p class="subscription-note">${safe(b.error||'续费金额未返回；套餐标价不等于下次实际扣款。')}</p>`;
+  }
+  function entitlements(data, bucket, offline) {
+    if (!data.account) return empty(data);
+    const source=data.chatgpt_feature_limits||{},old=isOld(source,offline),items=source.items||[];
+    const pages=Math.max(1,Math.ceil(items.length/4)),page=Math.floor(Date.now()/15000)%pages;
+    const rows=items.slice(page*4,page*4+4).map(item=>{const expired=finite(item.resets_at)&&item.resets_at<=Date.now()/1000,blocked=(source.blocked_features||[]).includes(item.id),note=old?' · 上次读取':blocked?' · 当前受限':expired?' · 等待更新':item.remaining===0?' · 已耗尽':'';return {old:old||expired,cells:[item.name,`${remaining(item.remaining)}${finite(item.remaining)?' 次':''}${note}`,finite(item.resets_at)?dateFormat.format(new Date(item.resets_at*1000))+' 重置':'时间未提供']};});
+    return `<div class="subscription-identity"><h2>ChatGPT 功能额度</h2><span>${old?'上次读取剩余':pages>1?`明细 ${page+1}/${pages} · 15 秒换页`:'独立次数 · 不与 Work 相加'}</span></div><div class="subscription-content subscription-entitlements ${old?'source-old':''}"><div class="entitlement-row entitlement-head"><span>功能</span><span>剩余次数</span><span>重置时间 · 北京</span></div>${rows.length?rows.map(row=>`<div class="entitlement-row ${row.old?'source-old':''}">${row.cells.map(cell=>`<span>${safe(cell)}</span>`).join('')}</div>`).join(''):`<p class="subscription-note">${safe(source.error||'正在读取 ChatGPT 功能额度。')}</p>`}</div><p class="subscription-note">${safe(source.error||'聊天模型、语音等未返回独立计数；不推算总上限。')}</p>`;
+  }
+  function render(data={}, view='overview', selected='codex', disconnected=false) {
+    const source=view==='billing'?(data.billing||{}):view==='entitlements'?(data.chatgpt_feature_limits||{}):data;
+    const old=isOld(source,disconnected);
+    const partial=view==='overview'&&[data,data.billing||{},data.chatgpt_feature_limits||{}].some(s=>s.status!=='live'||isOld(s,disconnected));
+    const status=old?'已过期 · 上次读取':source.status==='live'?(partial?'部分来源未同步':data.refreshing?'正在更新':'已同步'):source.status==='loading'?'正在读取':source.status==='disconnected'?'未连接':'读取失败';
+    const buckets = data.buckets || [], bucket = buckets.find(item=>item.id===selected) || buckets[0];
+    const names = {overview:'OpenAI 订阅', billing:'套餐与续费', entitlements:'ChatGPT 额度明细'};
+    const page = Object.keys(names).indexOf(view)+1 || 1;
+    const body = view==='billing'?billing(data):view==='entitlements'?entitlements(data,bucket,disconnected):overview(data,bucket,disconnected);
+    const stamp=view==='overview'?`ChatGPT ${syncTime(data.chatgpt_feature_limits)} · Work ${syncTime(data)}`:`${old?'上次同步':'同步'} ${syncTime(source)} · ChatGPT`;
+    return `<section class="subscription-screen ${old?'is-stale':''} ${view==='overview'?'combined-screen':''}"><header class="subscription-head"><h1><svg class="subscription-code-mark" viewBox="0 0 32 32" aria-hidden="true"><path d="m10 8-7 8 7 8m12-16 7 8-7 8M19 5l-6 22"/></svg>${names[view]||names.overview}</h1><span class="subscription-status ${old||partial||source.status==='error'?'warning':''}">${status}</span></header>${body}<footer class="subscription-footer"><span>${safe(stamp)}</span><span>${page} / 3</span></footer></section>`;
+  }
+  window.TurzxSubscription = {render, planName, bucketName, creditBalance};
+})();

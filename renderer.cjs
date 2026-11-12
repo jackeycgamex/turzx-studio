@@ -47,18 +47,23 @@ async function main() {
         await page.setViewportSize(size);
         dimensions=nextDimensions;
       }
-      await page.evaluate(async ({state,metrics})=>{
+      const renderStarted=performance.now();
+      const canvasData = await page.evaluate(async ({state,metrics,canvasAllowed})=>{
         if(typeof window.renderFrame==='function') await window.renderFrame(state,metrics);
+        if(canvasAllowed&&state.page==='ambient'&&typeof window.captureAnimationFrame==='function') return window.captureAnimationFrame();
         await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
-      },{state,metrics});
+        return null;
+      },{state,metrics,canvasAllowed:process.env.TURZX_CAPTURE_MODE!=='screenshot'});
       if(pageError) throw new Error('Page render failed: '+pageError.message);
-      const frame = await page.screenshot({type:'png',animations:'allow',timeout:10000});
+      const frame = canvasData ? Buffer.from(canvasData.split(',')[1],'base64') : await page.screenshot({type:'png',animations:'allow',timeout:10000});
+      const renderMs=(performance.now()-renderStarted).toFixed(2);
       const ack = await fetch(base+'/api/frame', {
-        method:'POST', headers:{'Content-Type':'image/png','X-Renderer-Token':token,'X-Frame-Rotation':String(state.rotation)},
+        method:'POST', headers:{'Content-Type':'image/png','X-Renderer-Token':token,'X-Frame-Rotation':String(state.rotation),'X-Frame-Render-Ms':renderMs,'X-Frame-Capture':canvasData?'canvas':'screenshot'},
         body:frame, signal:AbortSignal.timeout(10000)
       });
+      const ackBody = await ack.text(); // Release the response body on every frame.
       if (ack.status===409) break; // A stopped session is normal cancellation.
-      if (!ack.ok) throw new Error(`Frame rejected: ${await ack.text()}`);
+      if (!ack.ok) throw new Error(`Frame rejected: ${ackBody}`);
       const rest = Math.max(0,1000/state.fps-(performance.now()-started));
       await new Promise(resolve=>setTimeout(resolve,rest));
     }

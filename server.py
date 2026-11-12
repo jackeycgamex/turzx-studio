@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from collections import deque
 import copy
 import io
 import json
@@ -21,11 +22,14 @@ from urllib.parse import unquote, urlsplit
 from PIL import Image
 from telemetry import Telemetry
 from turzx_usb import TurzxWinUSB
+from animation_state import AnimationState
+from subscription import SubscriptionMonitor
 
 ROOT = Path(__file__).resolve().parent
 WEB = ROOT / "web"
 RUNTIME = ROOT / "runtime"
-PAGES = ("system", "network", "clock", "focus", "ambient", "media", "guide", "calibrate")
+PAGES = ("system", "network", "clock", "focus", "ambient", "openai", "media", "guide", "calibrate")
+SUBSCRIPTION_VIEWS = ("overview", "billing", "entitlements")
 LOG = logging.getLogger("turzx")
 
 
@@ -49,6 +53,10 @@ class Studio:
         self.session_id = 0
         self.stopping = threading.Event()
         self.metrics = Telemetry()
+        self.motion = AnimationState()
+        self.subscription = SubscriptionMonitor()
+        self.last_subscription_page_at = time.monotonic()
+        self.frame_times = deque(maxlen=30)
         self.state = {
             "page": "system", "rotation": 270, "fps": 2, "auto": False,
             "interval": 20, "streaming": False, "connected": False,
@@ -59,6 +67,7 @@ class Studio:
                        "vid": "1CBE", "pid": "0050"},
             "focus": {"duration": 1500, "remaining": 1500, "running": False},
             "note": "把注意力留给真正重要的事。",
+            "subscription_view": "overview", "subscription_auto": False, "subscription_bucket": "codex",
         }
         self.clock = threading.Thread(target=self._clock, name="studio-clock", daemon=True)
         self.clock.start()
@@ -66,6 +75,8 @@ class Studio:
     def snapshot(self):
         with self.state_lock:
             result = copy.deepcopy(self.state)
+            result["animation"] = self.motion.snapshot()
+            result["subscription"] = self.subscription.snapshot()
             if self.focus_deadline is not None:
                 result["focus"]["remaining"] = max(0, math.ceil(self.focus_deadline-time.monotonic()))
             return result
@@ -81,6 +92,10 @@ class Studio:
                     i = PAGES.index(self.state["page"])
                     self.state["page"] = PAGES[(i+1) % len(PAGES)]
                     self.last_page_at = now
+                if self.state["page"] == "openai" and self.state["subscription_auto"] and now-self.last_subscription_page_at >= 15:
+                    index = SUBSCRIPTION_VIEWS.index(self.state["subscription_view"])
+                    self.state["subscription_view"] = SUBSCRIPTION_VIEWS[(index+1) % len(SUBSCRIPTION_VIEWS)]
+                    self.last_subscription_page_at = now
             renderer = self.renderer
             generation = self.session_id
             if renderer and renderer.poll() is not None and renderer is self.renderer and self.snapshot()["streaming"]:
@@ -112,6 +127,7 @@ class Studio:
                     self.state["stats"] = {"frames": 0, "last_ms": None, "bytes": 0,
                                            "effective_fps": 0, "last_ack": None}
                     self.session_started = time.monotonic()
+                    self.frame_times.clear()
                 self.renderer = subprocess.Popen(
                     [node, str(ROOT / "renderer.cjs"), f"http://127.0.0.1:{self.port}"],
                     cwd=ROOT, env=env, stdout=self.renderer_log, stderr=subprocess.STDOUT,
@@ -174,13 +190,22 @@ class Studio:
     def control(self, changes):
         if not isinstance(changes, dict):
             raise ValueError("请求必须为 JSON 对象。")
-        allowed = {"page", "rotation", "fps", "auto", "interval", "note", "brightness", "action", "focus_duration"}
+        allowed = {"page", "rotation", "fps", "auto", "interval", "note", "brightness", "action", "focus_duration", "animation",
+                   "subscription_view", "subscription_auto", "subscription_bucket"}
         if set(changes)-allowed:
             raise ValueError("存在不支持的设置项。")
         action = changes.get("action")
-        if action not in (None, "start", "stop", "focus_start", "focus_pause", "focus_reset", "shutdown"):
+        if action not in (None, "start", "stop", "focus_start", "focus_pause", "focus_reset", "shutdown", "subscription_refresh"):
             raise ValueError("不支持的操作。")
         for key, value in changes.items():
+            if key == "subscription_view" and value not in SUBSCRIPTION_VIEWS:
+                raise ValueError("未知订阅页面。")
+            if key == "subscription_auto" and type(value) is not bool:
+                raise ValueError("订阅详情轮播应为布尔值。")
+            if key == "subscription_bucket" and (not isinstance(value, str) or not 1 <= len(value) <= 100):
+                raise ValueError("无效的额度分组。")
+            if key == "animation":
+                AnimationState.validate(value)
             if key == "page" and value not in PAGES:
                 raise ValueError("未知页面。")
             if key == "rotation" and (type(value) is not int or value not in (0, 90, 180, 270)):
@@ -201,11 +226,16 @@ class Studio:
                     raise ValueError("请先开始推送，再调整亮度。")
                 self.device.brightness(changes["brightness"])
         with self.state_lock:
-            for key in ("page", "rotation", "fps", "auto", "interval", "note", "brightness"):
+            if "animation" in changes:
+                self.motion.update(changes["animation"])
+            for key in ("page", "rotation", "fps", "auto", "interval", "note", "brightness",
+                        "subscription_view", "subscription_auto", "subscription_bucket"):
                 if key in changes:
                     self.state[key] = changes[key]
             if "page" in changes or "auto" in changes:
                 self.last_page_at = time.monotonic()
+            if any(key in changes for key in ("page", "subscription_view", "subscription_auto")):
+                self.last_subscription_page_at = time.monotonic()
             if "focus_duration" in changes:
                 self.state["focus"].update(duration=changes["focus_duration"], remaining=changes["focus_duration"], running=False)
                 self.focus_deadline = None
@@ -227,9 +257,11 @@ class Studio:
             self.start()
         elif action == "stop":
             self.stop()
+        elif action == "subscription_refresh":
+            self.subscription.refresh()
         return self.snapshot()
 
-    def frame(self, data, rotation, expected_session):
+    def frame(self, data, rotation, expected_session, render_ms=None, capture="screenshot"):
         started = time.perf_counter()
         if expected_session != self.session_id or not self.snapshot()["streaming"]:
             raise SessionPaused("推送已暂停。")
@@ -254,6 +286,7 @@ class Studio:
             payload = stream.getvalue()
         if len(payload) > 1024*1024:
             raise ValueError("RGBA PNG 超过设备单帧 1 MiB 限制，请降低画面复杂度。")
+        encode_ms = (time.perf_counter()-started)*1000
         with self.io_lock:
             if expected_session != self.session_id or not self.device or not self.snapshot()["streaming"]:
                 raise SessionPaused("推送已暂停。")
@@ -270,9 +303,15 @@ class Studio:
             s["last_ms"] = round(ms, 2)
             s["bytes"] += len(payload)
             s["last_ack"] = now
-            s["effective_fps"] = round(s["frames"]/max(.01, time.monotonic()-self.session_started), 2)
+            tick = time.monotonic()
+            self.frame_times.append(tick)
+            s["effective_fps"] = round((len(self.frame_times)-1)/max(.01, tick-self.frame_times[0]), 2) if len(self.frame_times)>1 else 0
+            s["session_fps"] = round(s["frames"]/max(.01, tick-self.session_started), 2)
+            s.update(encode_ms=round(encode_ms, 2), render_ms=render_ms, capture=capture, last_frame_bytes=len(payload))
         record = {"time": now, "page": self.snapshot()["page"], "rotation": rotation,
                   "bytes": len(payload), "usb_ms": round(ms, 3), "format": kind,
+                  "animation": self.motion.settings["preset"], "encode_ms": round(encode_ms, 3),
+                  "render_ms": render_ms, "capture": capture,
                   "total_ms": round((time.perf_counter()-started)*1000, 3),
                   "ack_prefix": bytes(reply)[:16].hex()}
         with (RUNTIME / "frames.jsonl").open("a", encoding="utf-8") as f:
@@ -283,6 +322,7 @@ class Studio:
         self.stopping.set()
         self.stop()
         self.metrics.close()
+        self.subscription.close()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -326,6 +366,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, self.app.snapshot())
         if route == "/api/metrics":
             return self.send(200, self.app.metrics.snapshot())
+        if route == "/api/subscription":
+            return self.send(200, self.app.subscription.snapshot())
         if route == "/api/info":
             return self.send(200, json.loads((ROOT / "device-info.json").read_text(encoding="utf-8")))
         if route.startswith("/api/"):
@@ -361,8 +403,14 @@ class Handler(BaseHTTPRequestHandler):
                 rotation = int(self.headers.get("X-Frame-Rotation", "270"))
                 if rotation not in (0, 90, 180, 270):
                     raise ValueError("Invalid frame rotation")
+                render_ms = float(self.headers.get("X-Frame-Render-Ms", "0"))
+                if not math.isfinite(render_ms) or not 0 <= render_ms <= 60000:
+                    raise ValueError("Invalid frame timing")
+                capture = self.headers.get("X-Frame-Capture", "screenshot")
+                if capture not in ("canvas", "screenshot"):
+                    raise ValueError("Invalid frame capture source")
                 try:
-                    return self.send(200, self.app.frame(data, rotation, generation))
+                    return self.send(200, self.app.frame(data, rotation, generation, render_ms, capture))
                 except SessionPaused as exc:
                     return self.send(409, {"error": str(exc), "cancelled": True})
                 except Exception as exc:

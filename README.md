@@ -4,9 +4,9 @@
 
 **把 USB 副屏变成可切换的实时看板。**
 
-TURZX Studio 是本地运行的 Windows 应用：浏览器负责预览和控制，电脑把页面渲染成不透明 RGBA PNG，再通过现有 WinUSB 驱动发送给图灵副屏。包含八种页面、实时硬件数据、横竖屏重排、自动轮播、专注计时和便签。
+TURZX Studio 是本地运行的 Windows 应用：浏览器负责预览和控制，电脑把页面渲染成不透明 RGBA PNG，再通过现有 WinUSB 驱动发送给图灵副屏。包含九种页面、实时硬件数据、OpenAI 订阅额度、横竖屏重排、自动轮播、专注计时和便签。
 
-A local Windows control panel and page renderer for the TURZX 5.2-inch USB display. Uses Python, Playwright and native WinUSB; no cloud service is required.
+A local Windows control panel and page renderer for the TURZX 5.2-inch USB display. Uses Python, Playwright and native WinUSB. Local scenes work offline; the optional OpenAI subscription scene reads the signed-in account online.
 
 ![生成氛围页面](docs/images/ambient.png)
 
@@ -48,7 +48,7 @@ npm ci
 
 选页、计时和便签在服务运行期间保留，退出后恢复默认值。亮度无法读回，初始值标为未知，只有主动调整滑块才发送亮度命令。
 
-## 八种页面
+## 九种页面
 
 | 页面 | 内容 |
 |---|---|
@@ -56,12 +56,29 @@ npm ci
 | 网络航道 | 实体网卡的实时收发与历史曲线 |
 | 此时此刻 | 北京时间与东京、伦敦、纽约时间 |
 | 专注空间 | 可暂停倒计时和便签 |
-| 缓慢轨道 | 无外部素材的程序生成动画 |
+| 动画实验室 | 轨道、极光、流场和星际漫游，支持速度、细节、暂停与时钟开关 |
+| OpenAI 订阅 | ChatGPT 功能剩余次数、Work / Codex 共享额度、真实订阅周期与续费状态，VS Code 浅色风格 |
 | 音乐一隅 | 媒体数据源尚未接入时的明确空态 |
 | 更多可能 | 已实现、待接入、待验证能力说明 |
 | 显示校准 | 四角、色条、灰阶、字号与圆形测试 |
 
 均支持横竖重排。控制发生在电脑浏览器，不假设屏幕具备触控。
+
+### 动画实验室
+
+选择「动画实验室」后，可在右侧切换四种效果，调整 0.25–2 倍运动速度，选择细腻或轻量细节，暂停/继续、隐藏时钟，或用「换一幅」更换可复现的图形种子。速度控制动画本身的节奏，发送帧率控制设备更新频率，两者相互独立。
+
+动画使用共享的时间基准，低发送帧率不会把整体运动拖慢。浏览器预览最高约 30 fps；实体屏仍受图像编码和 USB 事务速度限制。切出动画页、隐藏浏览器标签或启用减少动态效果时，非必要绘制会停止。
+
+实体屏的动画帧直接从 Canvas 获取，其他页面保留浏览器截图路径；两者最终都转换为已经验证的原生不透明 RGBA PNG。控制台显示最近帧率、每帧大小和绘制/转换/传输耗时，便于比较效果与细节设置。
+
+### OpenAI 订阅
+
+本机已安装并登录 ChatGPT 账户的 Codex CLI 后，选择「OpenAI 订阅」即可同时查看 ChatGPT 深度研究、图像生成等实际返回的功能剩余次数，Work / Codex 共享额度，以及订阅账期、下次续费、自动续费和购买渠道。额度每 60 秒同步，账单正常情况下每 30 分钟同步；支持手动刷新全部来源、三页切换和 15 秒轮播，功能明细每页最多四项。
+
+账户和共享额度来自 Codex app-server；ChatGPT 功能额度与续费信息来自 ChatGPT 网页账户接口。后者会读取当前 Codex 的 `auth.json` OAuth 凭据，在内存中使用并校验邮箱一致性，同时通过 OAuth `account_id` 的私有哈希识别同邮箱下的工作区变化；请求前再次校验，身份失效立即清除功能额度和账单两份缓存。只向固定 `chatgpt.com` HTTPS 接口发送，禁止重定向，不另存凭据或向页面暴露 token。额度初始化请求不含 prompt/messages，不执行推理、支付或重置兑换。
+
+网页账户接口不是稳定的公共 API，可能变更；各来源分别记录成功、失败与过期，失败保留旧采样或显示空态。普通 ChatGPT 聊天消息、语音独立计数和下次续费实扣金额当前未返回，明确标为未提供；空模型列表不代表无限。OpenAI API 用量与账单不纳入本页。详见 [OpenAI 订阅接入与使用](docs/openai-subscription.md)。
 
 ## 数据口径
 
@@ -74,16 +91,18 @@ npm ci
 
 参考设备上，**RGB PNG 虽收到成功 ACK，却出现重复条带和旧背景。** 当前发送路径强制使用 `720×1280`、alpha=255 的 **RGBA PNG（color type 6）**。修复后校准图经人工对照确认完整且方向正确；驱动会拒绝 RGB PNG。
 
-图片上限为 1 MiB，超限不会静默切换到另一个显示层。有限测试中，八页巡回约 2 fps，动画链路约 4.9 fps；这些结果不是面板刷新上限。详见[硬件、协议与实测说明](docs/hardware-and-protocol.md)。
+图片上限为 1 MiB，超限不会静默切换到另一个显示层。有限测试中，八页巡回约 2 fps，新动画实验室的竖屏细腻模式约 5.7–6.3 fps；这些结果不是面板刷新上限。详见[硬件、协议与实测说明](docs/hardware-and-protocol.md)及[动画探索记录](docs/animation-exploration.md)。
 
 ## 开发与验证
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
-.\.venv\Scripts\python.exe -m py_compile server.py telemetry.py turzx_usb.py
+.\.venv\Scripts\python.exe -m py_compile server.py telemetry.py turzx_usb.py subscription.py chatgpt_account.py
 node --check renderer.cjs
 node --check web/studio.js
 node --check web/display.js
+node --check web/subscription.js
+node tests/test_subscription_ui.cjs
 ```
 
 格式测试不需要 USB。硬件更改应先发送一张校准图并目视确认，再进行有限时长的连续测试。
@@ -94,6 +113,8 @@ server.py            本地服务、USB 所有权、计时和进程生命周期
 renderer.cjs         独立无头 Chrome 渲染
 turzx_usb.py         ctypes WinUSB 与图像协议
 telemetry.py         psutil / DXGI / PDH 遥测
+subscription.py      Codex 账户连接、独立来源同步与脱敏快照
+chatgpt_account.py   ChatGPT 网页功能额度、订阅周期和续费信息读取
 tests/               无硬件格式回归测试
 docs/                公开研究与示例截图
 runtime/             本地生成的日志和描述符，不进入 Git

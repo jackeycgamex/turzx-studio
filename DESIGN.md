@@ -31,7 +31,20 @@ colors:
   media-bg: "#211c1a"
   media-accent: "#e4c5a7"
   guide-bg: "#161b25"
+  openai-bg: "#ffffff"
+  openai-panel: "#fafafd"
+  openai-text: "#202020"
+  openai-muted: "#606060"
+  openai-border: "#e2e2e5"
+  openai-accent: "#0069cc"
+  openai-numeric: "#0550ae"
+  openai-warning: "#895503"
 typography:
+  openai-body:
+    fontFamily: "Segoe UI, Microsoft YaHei, sans-serif"
+  openai-numeric:
+    fontFamily: "Cascadia Code, Consolas, monospace"
+    fontWeight: 400
   body:
     fontFamily: "Manrope, Noto Sans SC, Microsoft YaHei, sans-serif"
     fontSize: "14px"
@@ -193,3 +206,33 @@ components:
 - Don't 将请求发送帧率当成面板刷新率。
 - Don't 隐藏窄屏的设备说明与来源入口。
 - Don't 把这次 code-first 选择写成用户的永久设计偏好。
+
+## 动画实验室增量
+
+沿用原有控制台和画布尺寸。四种Canvas作品以轨道、极光光带、流场曲线和透视星点区分，均为慢速连续运动，不使用闪烁或突然大幅缩放。播放参数由共享时间基准维护，浏览器预览约30 fps，实体帧率以控制台实测为准。切出动画页、隐藏标签和减少动态效果场景会停止连续绘制。控制区域复用现有下拉、滑块、开关与按钮，无新增图形库或远程素材。
+
+## OpenAI 订阅场景增量
+
+此节是 `openai` 场景的独立视觉规则。原有监听台、八个场景及动画实验室继续使用上文体系。用户在确认原订阅 UI 并要求接入真实数据后，将本场景方向明确改为 IT 风格、参考 VS Code 默认浅色；原深色订阅 PNG 仅为历史提案。
+
+### 视觉来源与颜色
+
+依据本机 VS Code 内置 `2026 Light` 主题提取：`C:/Softwares/Microsoft VS Code/04c0d99f4f/resources/app/extensions/theme-defaults/themes/2026-light.json`，其 include 为 `light_modern.json`。[VS Code 1.113 发布说明](https://code.visualstudio.com/updates/v1_113)记录了默认浅色与深色主题更新。实现以 `web/subscription.css` 和 `web/subscription-workbench.css` 为准。
+
+`openai-*` token 只用于订阅展示页与选中 OpenAI 场景时的控制台。白色主画布、近白工具栏、细灰分隔线、深灰正文构成阅读秩序；蓝色用于活动状态、焦点、进度与关键数字；棕色用于来源异常和过期提醒。过期额度数字与进度转为辅助灰，并保留文字说明。不得把新增色板扩散至其他场景。
+
+### 字体、布局与组件
+
+正文采用 `openai-body`；额度数字、时间数值及额度附加值采用 `openai-numeric`，中文仍使用系统字体回退。订阅页标题 31–32 px，套餐 35 px，主要说明约 22–30 px。当前综合总览主数字横屏 88 px、竖屏 82 px；同一共享额度分组返回两个窗口时使用紧凑数字横屏 42 px、竖屏 38 px。只为原生画布使用大字号，不放大控制台文字。
+
+展示保持 1280×720 横屏与 720×1280 竖屏，左右留白 44 px。综合总览横屏以三列并列 ChatGPT 功能额度前两项和 Work / Codex 共享额度；竖屏重排为三行，每行将数值与重置时间分置左右。底部承载续费时间、自动续费、credits 和重置机会。共享额度返回一个或两个窗口时只调整该区，不占用 ChatGPT 功能区。套餐与续费页横屏左右分区、竖屏上下重排；功能明细每页最多四项，每 15 秒分页，竖屏将重置时间另起一行。头尾工具栏固定分隔。进度轨道保持直角，控制台按钮与输入框为 3 px 小圆角，预览去除投影，以边框和底色分层。
+
+控制台提供三页选择、15 秒详情轮播、实际返回的共享额度分组选择、手动刷新及官方入口。副屏只显示数据与状态。三页轮播、明细内部自动分页和场景轮播分别处理；固定订阅内容时关闭场景轮播，手动切换详情页会关闭三页轮播，明细超过四项时仍自动分页。焦点为可见蓝色轮廓，不依赖颜色单独传达数据状态。
+
+### 数据与验证约束
+
+设计表现遵循实际返回的功能次数、共享额度桶与窗口。ChatGPT 深度研究、图像生成等独立次数不与 Work / Codex 共享百分比相加；不画虚构的短周期额度，空模型列表不代表无限。credits、重置机会、次数与百分比保留各自单位。账期、续费时间、自动续费和平台使用 ChatGPT 账户接口的真实字段；权益到期不能代替续费时间，套餐标价不能代替实扣金额。尚未返回的普通聊天消息、语音独立计数和续费实扣金额明确标注，不推算。倒计时归零显示等待更新，不能自行补满。
+
+ChatGPT 功能额度、共享额度与账单分别维护成功时间和过期状态；部分来源失败时保留其他来源的有效结果，并标记“部分来源未同步”。过期数值、灰色进度与来源提示共同表达旧采样，不以全局同步标签掩盖局部失败。操作、凭据读取与接口边界见 [订阅使用说明](docs/openai-subscription.md)。
+
+新增 ChatGPT 功能额度与续费已完成三页横竖屏和桌面/窄屏控制台共八图复审，结论为 ship；证据位于 `runtime/chatgpt-qa/*.jpg`，最终生产捕获为 `live-overview.jpg`。最终版保留用户当前竖屏方向并持续投送，本轮尚未用户目视确认。`runtime/openai/light-*.png` 以及用户对横屏“显示正常，方向和文字都正确”的口头确认只对应上一轮以 Codex 为主的版本，不作为本轮实体屏验收。详细验证结果见订阅使用说明。既存 `.impeccable/design.json` 已发现过期，本次不修复或覆盖该 sidecar。
