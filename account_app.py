@@ -55,7 +55,7 @@ class AccountApp:
                 with build_opener(NoRedirect).open("http://127.0.0.1:8765/api/state", timeout=2) as response:
                     data = json.loads(response.read(512*1024))
                 style = dict(DEFAULT_STYLE)
-                if data.get("claude_background") in ("stand", "thought", "greeting", "none"):
+                if data.get("claude_background") in ("stand", "thought", "greeting", "floral", "celestial", "atelier", "botanical", "glasswave", "paperland", "none"):
                     style["claude_background"] = data["claude_background"]
                 for key, low, high in (("image_brightness", 80, 140), ("image_saturation", 50, 120), ("image_fade", 0, 50)):
                     value = data.get(key)

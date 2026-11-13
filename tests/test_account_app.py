@@ -122,6 +122,18 @@ class AccountAppTests(unittest.TestCase):
             self.assertEqual(raised.exception.code, 404)
             raised.exception.close()
 
+    @patch('account_app.build_opener')
+    def test_new_screen_background_is_shared_with_app(self, opener):
+        response = opener.return_value.open.return_value.__enter__.return_value
+        response.read.return_value = json.dumps({
+            'claude_background': 'floral', 'image_brightness': 125,
+            'image_saturation': 90, 'image_fade': 10}).encode()
+        with patch.object(self.app.stopping, 'wait', side_effect=lambda _: self.app.stopping.set()):
+            self.app.sync_style()
+        self.assertEqual(self.app.snapshot()['style'], {
+            'claude_background': 'floral', 'image_brightness': 125,
+            'image_saturation': 90, 'image_fade': 10})
+
     def test_expired_confirmation_returns_to_snapshot(self):
         self.app.confirmed = ('2', time.time()-31)
         self.assertEqual(self.app.snapshot()['claude']['active_account_id'], '1')
