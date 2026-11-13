@@ -50,7 +50,9 @@ def main():
         print("已取消登录启动，并停止该启动项管理的服务。")
         return
     if loaded:
-        print("登录启动项已加载。")
+        # kickstart reopens a normally closed agent, and leaves a running one alone.
+        subprocess.run(["launchctl", "kickstart", target], check=True)
+        print("登录启动项已加载，服务已启动或正在运行。")
         return
     node = shutil.which("node")
     if not node:

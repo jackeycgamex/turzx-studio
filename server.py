@@ -37,10 +37,17 @@ RUNTIME = ROOT / "runtime"
 PAGES = ("system", "network", "clock", "focus", "ambient", "openai", "claude", "cswap", "media", "guide", "calibrate")
 SUBSCRIPTION_VIEWS = ("overview", "billing", "entitlements")
 SUBSCRIPTION_BACKGROUNDS = ("none", "it", "anime", "dragon")
-CLAUDE_BACKGROUNDS = ("stand", "thought", "greeting", "none")
+CLAUDE_BACKGROUNDS = ("stand", "thought", "greeting", "floral", "celestial", "atelier", "botanical", "paperland", "glasswave", "none")
 IMAGE_APPEARANCE_DEFAULTS = {"image_brightness": 112, "image_saturation": 85, "image_fade": 12}
 IMAGE_APPEARANCE_BOUNDS = {"image_brightness": (80, 140), "image_saturation": (50, 120), "image_fade": (0, 50)}
-DISPLAY_PREFERENCES = ("subscription_background", "subscription_background_transparency", "rotation", "page", "fps", "resume_streaming", "brightness", "panel_color_order", "panel_calibration", "claude_background", *IMAGE_APPEARANCE_DEFAULTS)
+SCENE_PREFERENCES_DEFAULTS = {
+    "auto": False, "interval": 20, "note": "把注意力留给真正重要的事。",
+    "subscription_view": "overview", "subscription_auto": False, "subscription_bucket": "codex",
+    "focus_duration": 1500,
+    "animation": {"preset": "orbit", "speed": 1.0, "detail": "balanced",
+                  "show_clock": True, "paused": False, "seed": 52},
+}
+DISPLAY_PREFERENCES = ("subscription_background", "subscription_background_transparency", "rotation", "page", "fps", "resume_streaming", "brightness", "panel_color_order", "panel_calibration", "claude_background", *IMAGE_APPEARANCE_DEFAULTS, *SCENE_PREFERENCES_DEFAULTS)
 LOG = logging.getLogger("turzx")
 
 
@@ -55,6 +62,25 @@ def load_display_preferences(path):
     if not isinstance(saved, dict):
         return {}
     result = {}
+    for key in ("auto", "subscription_auto"):
+        if type(saved.get(key)) is bool:
+            result[key] = saved[key]
+    for key, low, high in (("interval", 5, 120), ("focus_duration", 60, 10800)):
+        value = saved.get(key)
+        if type(value) is int and low <= value <= high:
+            result[key] = value
+    for key, low, high in (("note", 0, 160), ("subscription_bucket", 1, 100)):
+        value = saved.get(key)
+        if isinstance(value, str) and low <= len(value) <= high:
+            result[key] = value
+    if saved.get("subscription_view") in SUBSCRIPTION_VIEWS:
+        result["subscription_view"] = saved["subscription_view"]
+    if "animation" in saved:
+        try:
+            AnimationState.validate(saved["animation"])
+            result["animation"] = {**SCENE_PREFERENCES_DEFAULTS["animation"], **saved["animation"]}
+        except ValueError:
+            LOG.warning("Invalid animation preferences; using defaults.")
     brightness = saved.get("brightness")
     if type(brightness) is int and 0 <= brightness <= 100:
         result["brightness"] = brightness
@@ -87,7 +113,8 @@ def load_display_preferences(path):
 
 
 def save_display_preferences(path, state):
-    state = {"brightness": None, "claude_background": "stand", **IMAGE_APPEARANCE_DEFAULTS, **state}
+    state = {"brightness": None, "claude_background": "stand", **IMAGE_APPEARANCE_DEFAULTS,
+             **copy.deepcopy(SCENE_PREFERENCES_DEFAULTS), **state}
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = None
     try:
@@ -106,6 +133,29 @@ def save_display_preferences(path, state):
 
 class SessionPaused(Exception):
     """Normal cancellation, not a device error."""
+
+
+def encode_panel_png(image, limit=1024 * 1024):
+    """Keep exact pixels when possible, otherwise bound RGB rounding to ±2.
+
+    Browser scaling and colour controls can increase PNG entropy even when the
+    wallpaper asset fits. The final fallback never changes alpha or dimensions.
+    """
+    for compression in (1, 9):
+        stream = io.BytesIO()
+        image.save(stream, "PNG", compress_level=compression)
+        payload = stream.getvalue()
+        if len(payload) < limit:
+            return payload, 1
+    for step in (2, 3, 4):
+        lookup = [min(255, round(value / step) * step) for value in range(256)]
+        rounded = image.point(lookup * 3 + list(range(256)))
+        stream = io.BytesIO()
+        rounded.save(stream, "PNG", compress_level=9)
+        payload = stream.getvalue()
+        if len(payload) < limit:
+            return payload, step
+    raise ValueError("RGBA PNG 超过设备单帧 1 MiB 限制，请降低画面复杂度。")
 
 
 class Studio:
@@ -131,9 +181,10 @@ class Studio:
         self.frame_times = deque(maxlen=30)
         self.state = {
             **IMAGE_APPEARANCE_DEFAULTS,
+            **copy.deepcopy(SCENE_PREFERENCES_DEFAULTS),
             "claude_background": "stand",
-            "page": "system", "rotation": 270, "fps": 2, "auto": False,
-            "interval": 20, "streaming": False, "connected": False, "resume_streaming": False,
+            "page": "system", "rotation": 270, "fps": 2,
+            "streaming": False, "connected": False, "resume_streaming": False,
             "error": None, "brightness": None, "panel_color_order": "rgb",
             "panel_calibration": dict(DEFAULT_CALIBRATION),
             "stats": {"frames": 0, "last_ms": None, "bytes": 0,
@@ -141,13 +192,13 @@ class Studio:
             "device": {"name": "TURZX 5.2", "width": 1280, "height": 720,
                        "vid": "1CBE", "pid": "0050"},
             "focus": {"duration": 1500, "remaining": 1500, "running": False},
-            "note": "把注意力留给真正重要的事。",
-            "subscription_view": "overview", "subscription_auto": False, "subscription_bucket": "codex",
             "subscription_background": "none",
             "subscription_background_transparency": 25,
         }
         self.preferences_path = RUNTIME / "display-preferences.json"
         self.state.update(load_display_preferences(self.preferences_path))
+        self.motion.update(self.state["animation"])
+        self.state["focus"].update(duration=self.state["focus_duration"], remaining=self.state["focus_duration"])
         self.reconnect_at = 0.0
         self.reconnect_delay = 2.0
         self.clock = threading.Thread(target=self._clock, name="studio-clock", daemon=True)
@@ -182,7 +233,13 @@ class Studio:
                     self.last_page_at = now
                 if self.state["page"] == "openai" and self.state["subscription_auto"] and now-self.last_subscription_page_at >= 15:
                     index = SUBSCRIPTION_VIEWS.index(self.state["subscription_view"])
-                    self.state["subscription_view"] = SUBSCRIPTION_VIEWS[(index+1) % len(SUBSCRIPTION_VIEWS)]
+                    next_view = SUBSCRIPTION_VIEWS[(index+1) % len(SUBSCRIPTION_VIEWS)]
+                    try:
+                        save_display_preferences(self.preferences_path, {**self.state, "subscription_view": next_view})
+                    except OSError:
+                        LOG.warning("Unable to save subscription view; keeping current view.")
+                    else:
+                        self.state["subscription_view"] = next_view
                     self.last_subscription_page_at = now
             renderer = self.renderer
             generation = self.session_id
@@ -379,9 +436,13 @@ class Studio:
             if any(key in changes for key in DISPLAY_PREFERENCES):
                 # Persist before publishing the state; a failed write must not
                 # report a setting that will be lost after a restart.
-                save_display_preferences(self.preferences_path, {**self.state, **changes})
+                preferences = {**self.state, **changes}
+                if "animation" in changes:
+                    preferences["animation"] = {**self.motion.settings, **changes["animation"]}
+                save_display_preferences(self.preferences_path, preferences)
             if "animation" in changes:
                 self.motion.update(changes["animation"])
+                self.state["animation"] = dict(self.motion.settings)
             for key in ("panel_calibration", "panel_color_order", "page", "rotation", "fps", "auto", "interval", "note", "brightness",
                         "subscription_view", "subscription_auto", "subscription_bucket", "subscription_background", "subscription_background_transparency", "claude_background", *IMAGE_APPEARANCE_DEFAULTS):
                 if key in changes:
@@ -391,6 +452,7 @@ class Studio:
             if any(key in changes for key in ("page", "subscription_view", "subscription_auto")):
                 self.last_subscription_page_at = time.monotonic()
             if "focus_duration" in changes:
+                self.state["focus_duration"] = changes["focus_duration"]
                 self.state["focus"].update(duration=changes["focus_duration"], remaining=changes["focus_duration"], running=False)
                 self.focus_deadline = None
             f = self.state["focus"]
@@ -432,16 +494,8 @@ class Studio:
         color_order = frame_settings["panel_color_order"]
         image = prepare_panel_image(image, rotation, color_order,
                                     frame_settings.get("panel_calibration"))
-        stream = io.BytesIO()
-        image.save(stream, "PNG", compress_level=1)
-        payload = stream.getvalue()
+        payload, quantization_step = encode_panel_png(image)
         kind = "png"
-        if len(payload) > 1024*1024:
-            stream = io.BytesIO()
-            image.save(stream, "PNG", compress_level=9)
-            payload = stream.getvalue()
-        if len(payload) > 1024*1024:
-            raise ValueError("RGBA PNG 超过设备单帧 1 MiB 限制，请降低画面复杂度。")
         encode_ms = (time.perf_counter()-started)*1000
         with self.io_lock:
             if expected_session != self.session_id or not self.device or not self.snapshot()["streaming"]:
@@ -465,10 +519,12 @@ class Studio:
             self.frame_times.append(tick)
             s["effective_fps"] = round((len(self.frame_times)-1)/max(.01, tick-self.frame_times[0]), 2) if len(self.frame_times)>1 else 0
             s["session_fps"] = round(s["frames"]/max(.01, tick-self.session_started), 2)
-            s.update(encode_ms=round(encode_ms, 2), render_ms=render_ms, capture=capture, last_frame_bytes=len(payload))
+            s.update(encode_ms=round(encode_ms, 2), render_ms=render_ms, capture=capture,
+                     last_frame_bytes=len(payload), quantization_step=quantization_step)
         record = {"time": now, "page": self.snapshot()["page"], "rotation": rotation,
                   "bytes": len(payload), "usb_ms": round(ms, 3), "format": kind, "panel_color_order": color_order,
                   "panel_calibration": frame_settings.get("panel_calibration"),
+                  "quantization_step": quantization_step,
                   "animation": self.motion.settings["preset"], "encode_ms": round(encode_ms, 3),
                   "render_ms": render_ms, "capture": capture,
                   "total_ms": round((time.perf_counter()-started)*1000, 3),

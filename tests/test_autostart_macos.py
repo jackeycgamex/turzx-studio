@@ -4,9 +4,10 @@ import plistlib
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch, Mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from autostart_macos import agent_config
+from autostart_macos import agent_config, main
 
 
 class AutostartTests(unittest.TestCase):
@@ -26,6 +27,16 @@ class AutostartTests(unittest.TestCase):
         self.assertTrue(config["RunAtLoad"])
         self.assertEqual(config["KeepAlive"], {"SuccessfulExit": False})
         self.assertGreaterEqual(config["ThrottleInterval"], 10)
+
+    def test_existing_login_agent_can_be_reopened_without_killing_it(self):
+        with patch('autostart_macos.sys.platform', 'darwin'), \
+             patch('autostart_macos.sys.argv', ['autostart_macos.py']), \
+             patch('autostart_macos.os.getuid', return_value=501), \
+             patch('autostart_macos.subprocess.run', return_value=Mock(returncode=0)) as run:
+            main()
+        self.assertEqual(run.call_args_list[1].args[0],
+                         ['launchctl', 'kickstart', 'gui/501/com.turzx.studio'])
+        self.assertEqual(run.call_count, 2)
 
 
 if __name__ == "__main__":

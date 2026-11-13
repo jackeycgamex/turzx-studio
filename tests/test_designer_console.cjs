@@ -4,7 +4,7 @@ const {chromium}=require('playwright');const assert=require('node:assert/strict'
  const original=await(await fetch('http://127.0.0.1:8765/api/state')).json();const metrics=await(await fetch('http://127.0.0.1:8765/api/metrics')).json();const info=await(await fetch('http://127.0.0.1:8765/api/info')).json();
  const b=await chromium.launch({channel:'chrome',headless:true});let count=0;const errors=[];
  for(const width of [1440,390]){
- let state={...structuredClone(original),page:'system',connected:true,streaming:false,error:null},offline=false,fail=false,release=null;const requests=[];
+ let state={...structuredClone(original),page:'system',claude_background:'stand',connected:true,streaming:false,error:null},offline=false,fail=false,release=null;const requests=[];
  const p=await b.newPage({viewport:{width,height:1000}});p.on('pageerror',e=>errors.push(e.message));
  await p.route('**/api/**',async route=>{const url=new URL(route.request().url());if(url.pathname==='/api/control'){
  const patch=route.request().postDataJSON();requests.push(patch);if(release)await new Promise(r=>release=r);if(fail){await route.fulfill({status:500,json:{error:'测试失败提示'}});return;}
@@ -26,7 +26,7 @@ const {chromium}=require('playwright');const assert=require('node:assert/strict'
  await p.screenshot({path:`runtime/designer-verification/console-openai-${width}.png`,fullPage:true});
  await p.locator('[data-page="cswap"]').click();await last({page:'cswap'});await p.click('#claude-refresh');await last({action:'claude_refresh'});await p.screenshot({path:`runtime/designer-verification/console-claude-${width}.png`,fullPage:true});
  await tab('display');
- for(const value of ['thought','greeting','none','stand']){await p.locator('input[name="claude-background"][value="'+value+'"]').check();await last({claude_background:value});assert.equal(await p.locator('input[name="claude-background"]:checked').inputValue(),value);}
+ for(const value of ['thought','greeting','floral','celestial','atelier','botanical','paperland','glasswave','none','stand']){await p.locator('input[name="claude-background"][value="'+value+'"]').check();await last({claude_background:value});assert.equal(await p.locator('input[name="claude-background"]:checked').inputValue(),value);}
  await p.reload();await p.waitForSelector('#connection.online');assert.equal(await p.locator('input[name="claude-background"]:checked').inputValue(),'stand');
  for(const [id,value,key] of [['image-brightness','120','image_brightness'],['image-saturation','80','image_saturation'],['image-fade','18','image_fade']]){await p.locator('#'+id).evaluate((e,v)=>{e.value=v;e.dispatchEvent(new Event('input'));e.dispatchEvent(new Event('change'));},value);await last({[key]:Number(value)});assert.equal(await p.locator('#'+id+'-value').textContent(),value+'%');}
  await p.click('#image-original');await last({image_brightness:100,image_saturation:100,image_fade:0});

@@ -59,3 +59,14 @@
  .account-scene[data-count="0"] .account-wallpaper{left:640px;width:640px;mask-image:linear-gradient(to right,transparent,#000 80px)}
  .account-scene[data-count="0"] .account-wallpaper img{object-position:right top}
 }
+
+/* New illustrated borders remain visible around the cards, including dense views. */
+@media(min-aspect-ratio:1/1){
+ .account-scene.account-scene-decorated .account-wallpaper{inset:0;width:100%;height:100%;mask-image:none}
+ .account-scene.account-scene-decorated .account-wallpaper img{object-position:center}
+ .account-scene-decorated .account-card{box-shadow:0 3px 14px rgba(81,57,33,.035)}
+}
+@media(max-aspect-ratio:1/1){
+ .account-scene-decorated .account-wallpaper{mask-image:linear-gradient(to bottom,transparent,#000 32px)}
+ .account-scene-decorated .account-wallpaper img{object-position:right center}
+}
