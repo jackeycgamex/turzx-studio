@@ -39,9 +39,13 @@ npm ci
 .\启动.cmd
 ```
 
-屏幕方向、当前页面、发送帧率，以及 OpenAI 订阅页的背景和透明度会自动保存到本机 `runtime/display-preferences.json`，重启服务后恢复。
+投屏配置自动保存到本机 `runtime/display-preferences.json`，重新打开后恢复上次页面、背景、颜色、背光、轮播、便签及场景设置。完整字段和恢复规则见 [最后配置记忆](docs/macos.md#最后配置记忆)。
 
 正在投屏时关闭服务，下次启动会自动继续投屏；先点击“停止”再关闭，下次保持停止。USB 断开后服务会等待设备接回并自动恢复：设备缺席时每 2 秒只读检查，连接失败时按 2、4、8、16、30 秒间隔重试，成功发送一帧后重置间隔。手动停止或关闭服务会取消自动重连。
+
+macOS 用户使用 `.venv/bin/python autostart_macos.py` 启用登录启动；取消时加 `--disable`。配置、恢复投屏和日志说明见 [macOS 登录启动](docs/macos.md#登录后自动启动)。
+
+执行 `.venv/bin/python open_macos.py --install-desktop` 安装桌面「副屏管理.app」。该入口会复用或启动服务，再打开管理页；关闭服务后也能通过它重新打开。
 
 ### Windows 登录后静默启动
 

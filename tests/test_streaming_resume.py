@@ -45,6 +45,94 @@ class StreamingResumeTests(unittest.TestCase):
         self.TurzxWinUSB.assert_not_called()
         self.assertFalse(app.state['streaming'])
 
+    def test_saved_backlight_is_restored_on_start_and_reconnect(self):
+        for value in (0, 100):
+            with self.subTest(value=value):
+                self.path.write_text(json.dumps({'resume_streaming': True, 'brightness': value}))
+                app = self.create()
+                device = self.TurzxWinUSB.return_value
+                device.reset_mock()
+                app.try_resume_streaming()
+                device.brightness.assert_called_once_with(value)
+                app.stop()
+                app.start()
+                self.assertEqual(device.brightness.call_count, 2)
+                app.close()
+
+    def test_all_scene_settings_survive_restart_and_later_partial_update(self):
+        app = self.create()
+        preferences = {
+            'page': 'openai', 'auto': True, 'interval': 45, 'rotation': 90, 'fps': 5,
+            'note': '保留我的便签', 'subscription_view': 'billing', 'subscription_auto': True,
+            'subscription_bucket': 'weekly', 'focus_duration': 2700,
+            'claude_background': 'greeting', 'image_brightness': 100,
+            'image_saturation': 100, 'image_fade': 0,
+            'animation': {'preset': 'stars', 'speed': 1.5, 'detail': 'light',
+                          'paused': True, 'show_clock': False, 'seed': 123},
+        }
+        app.control(preferences)
+        app.start()
+        app.close()
+        reloaded = self.create()
+        actual = reloaded.snapshot()
+        for key, value in preferences.items():
+            if key == 'animation':
+                self.assertEqual(reloaded.motion.settings, value)
+            else:
+                self.assertEqual(actual[key], value, key)
+        self.assertEqual(actual['focus']['duration'], 2700)
+        self.assertTrue(actual['resume_streaming'])
+        reloaded.control({'animation': {'speed': .5}})
+        reloaded.control({'note': ''})
+        saved = load_display_preferences(self.path)
+        self.assertEqual(saved['animation'], {**preferences['animation'], 'speed': .5})
+        self.assertEqual(saved['note'], '')
+
+    def test_failed_scene_save_cannot_mutate_animation_or_note(self):
+        app = self.create()
+        before = dict(app.motion.settings)
+        note = app.state['note']
+        with patch('server.os.replace', side_effect=OSError('disk full')):
+            with self.assertRaises(OSError):
+                app.control({'animation': {'preset': 'stars'}, 'note': 'not saved'})
+        self.assertEqual(app.motion.settings, before)
+        self.assertEqual(app.state['note'], note)
+
+    def test_restored_timer_configuration_does_not_restart_a_live_timer(self):
+        app = self.create()
+        app.control({'focus_duration': 1800, 'action': 'focus_start'})
+        self.assertTrue(app.state['focus']['running'])
+        app.close()
+        reloaded = self.create()
+        self.assertEqual(reloaded.state['focus'], {'duration': 1800, 'remaining': 1800, 'running': False})
+        self.assertIsNone(reloaded.focus_deadline)
+
+    def test_unknown_backlight_is_not_overwritten(self):
+        app = self.create(True)
+        app.try_resume_streaming()
+        self.TurzxWinUSB.return_value.brightness.assert_not_called()
+
+    def test_backlight_change_survives_service_restart(self):
+        app = self.create()
+        app.start()
+        app.control({'brightness': 76})
+        app.close()
+        self.assertEqual(load_display_preferences(self.path)['brightness'], 76)
+        reloaded = self.create()
+        self.TurzxWinUSB.return_value.brightness.reset_mock()
+        reloaded.try_resume_streaming()
+        self.TurzxWinUSB.return_value.brightness.assert_called_once_with(76)
+
+    def test_failed_backlight_restore_prevents_renderer_start(self):
+        self.path.write_text(json.dumps({'resume_streaming': True, 'brightness': 100}))
+        app = self.create()
+        self.TurzxWinUSB.return_value.brightness.side_effect = OSError('backlight failed')
+        with self.assertRaises(OSError):
+            app.start()
+        self.Popen.assert_not_called()
+        self.TurzxWinUSB.return_value.close.assert_called()
+        self.assertFalse(app.state['streaming'])
+
     def test_saved_state_is_not_reported_as_connected_before_resume(self):
         app = self.create(True)
         self.assertFalse(app.state['streaming'])

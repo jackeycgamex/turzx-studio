@@ -17,12 +17,7 @@
 .account-scene[data-count="2"] .account-content{width:820px}.account-scene[data-count="2"] .account-cards{grid-template-columns:repeat(2,minmax(0,1fr))}.account-scene[data-count="2"] .account-card h2{font-size:30px}.account-scene[data-count="2"] .claude-value{font-size:56px}
 .account-scene:is([data-count="4"],[data-count="5"]) .account-content{width:900px}.account-scene:is([data-count="4"],[data-count="5"]) .account-wallpaper{left:972px;width:308px}.account-scene:is([data-count="4"],[data-count="5"]) .account-wallpaper img{object-position:100% top}
 .account-scene:is([data-count="4"],[data-count="5"]) .account-cards{display:flex;flex-direction:column;gap:12px}.account-scene:is([data-count="4"],[data-count="5"]) .account-card{flex:1;display:grid;grid-template-columns:165px minmax(0,1fr);padding:14px 18px;gap:14px;border-radius:16px}.account-scene:is([data-count="4"],[data-count="5"]) .account-card h2{font-size:20px}.account-scene:is([data-count="4"],[data-count="5"]) .account-card-top{flex-wrap:wrap;gap:6px}.account-scene:is([data-count="4"],[data-count="5"]) .active-account-badge{font-size:14px;padding:2px 6px}.account-scene:is([data-count="4"],[data-count="5"]) .account-meta{font-size:16px}.account-scene:is([data-count="4"],[data-count="5"]) .account-status{font-size:16px}.account-scene:is([data-count="4"],[data-count="5"]) .account-card-quotas{grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:1fr;gap:16px}.account-scene:is([data-count="4"],[data-count="5"]) .claude-quota{padding:0;border:0;grid-template-rows:23px 34px 6px 25px;gap:3px}.account-scene:is([data-count="4"],[data-count="5"]) .claude-value{font-size:34px}.account-scene:is([data-count="4"],[data-count="5"]) .claude-quota h3{font-size:18px}.account-scene:is([data-count="4"],[data-count="5"]) .claude-quota-label{font-size:16px}.account-scene:is([data-count="4"],[data-count="5"]) .claude-reset strong{font-size:16px}
-@media(max-aspect-ratio:1/1){
- .account-content{left:48px;top:52px;width:624px;height:920px}.account-wallpaper img{object-position:right top}.account-cards{display:flex;flex-direction:column;gap:18px}.account-card{flex:1;padding:18px 20px;gap:12px}.account-card.is-active{padding:17px 19px}.account-card-top{gap:12px}.account-card h2{font-size:26px}.account-card-identity{gap:6px}.account-card-quotas{grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:1fr;gap:20px}.claude-quota{grid-template-columns:1fr;grid-template-rows:25px 22px 46px 6px 26px;gap:5px;padding-top:10px}.claude-quota h3{font-size:18px}.claude-quota-label{grid-column:1;grid-row:2;font-size:16px}.claude-value{grid-column:1;grid-row:3;font-size:42px}.claude-reset strong{font-size:16px}
- .account-scene[data-count="0"] .account-content,.account-scene[data-count="1"] .account-content,.account-scene[data-count="2"] .account-content{width:624px;height:auto}.account-scene[data-count="1"] .account-card{padding:22px}.account-scene[data-count="1"] .account-card h2{font-size:34px}.account-scene[data-count="1"] .claude-value{font-size:56px}.account-scene[data-count="1"] .claude-reset strong{font-size:16px}.account-scene[data-count="1"] .account-card-quotas{gap:18px}.account-scene[data-count="2"] .account-card{min-height:330px}.account-scene[data-count="2"] .claude-value{font-size:50px}
- .account-scene[data-count="3"] .account-wallpaper{top:980px;height:300px}.account-scene[data-count="3"] .account-wallpaper img{object-position:center 8%}
- .account-scene:is([data-count="4"],[data-count="5"]) .account-content{width:624px;height:930px}.account-scene:is([data-count="4"],[data-count="5"]) .account-wallpaper{left:0;top:1000px;width:720px;height:280px}.account-scene:is([data-count="4"],[data-count="5"]) .account-wallpaper img{object-position:center 8%}.account-scene:is([data-count="4"],[data-count="5"]) .account-card{display:flex;padding:12px 18px;gap:8px}.account-scene:is([data-count="4"],[data-count="5"]) .account-card-identity{flex-direction:row;justify-content:space-between;gap:14px;align-items:center}.account-scene:is([data-count="4"],[data-count="5"]) .account-meta{gap:16px}.account-scene:is([data-count="4"],[data-count="5"]) .account-card-quotas{gap:14px}.account-scene:is([data-count="4"],[data-count="5"]) .claude-quota{grid-template-columns:1fr auto;grid-template-rows:23px 34px 6px 25px}.account-scene:is([data-count="4"],[data-count="5"]) .claude-value{grid-column:2;grid-row:2;font-size:32px}.account-scene:is([data-count="4"],[data-count="5"]) .claude-reset strong{font-size:15px}
-}
+
 
 /* Keep countdowns readable at native resolution, including the dense five-account view. */
 .account-scene .claude-reset strong{font-size:18px}
@@ -30,27 +25,10 @@
  .account-scene[data-count="5"] .account-card{padding:8px 18px}
  .account-scene[data-count="5"] .claude-quota{grid-template-rows:23px 30px 6px 25px;gap:2px}
 }
-@media(max-aspect-ratio:1/1){
- .account-scene .account-wallpaper{left:0;right:0;width:720px;bottom:0;height:auto}
- .account-scene .account-wallpaper img{object-position:right top;object-fit:cover}
- .account-scene[data-count="0"] .account-wallpaper{top:450px}
- .account-scene[data-count="1"] .account-wallpaper{top:570px}
- .account-scene[data-count="2"] .account-wallpaper{top:830px}
- .account-scene[data-count="3"] .account-content{height:800px}
- .account-scene[data-count="3"] .account-wallpaper{top:880px}
- .account-scene:is([data-count="4"],[data-count="5"]) .account-wallpaper{top:1000px}
- .account-scene .claude-reset strong{font-size:18px}
-}
-@media(max-aspect-ratio:1/1){
- .account-scene:is([data-count="2"],[data-count="3"]) .account-card-identity{flex-direction:row;align-items:center;justify-content:space-between;gap:16px}
- .account-scene:is([data-count="2"],[data-count="3"]) .account-card-top{flex:1}
- .account-scene:is([data-count="2"],[data-count="3"]) .account-meta{gap:12px}
- .account-scene[data-count="3"] .claude-quota{grid-template-rows:23px 22px 42px 6px 26px;gap:4px;padding-top:8px}
- .account-scene:is([data-count="3"],[data-count="4"],[data-count="5"]) .account-wallpaper{height:auto}
- .account-scene .account-wallpaper{mask-image:linear-gradient(to bottom,transparent,#000 48px)}
-}
+
+
 .account-scene .account-meta,.account-scene .account-status,.account-scene .claude-quota-label,.account-scene .active-account-badge{font-size:18px}
-@media(max-aspect-ratio:1/1){.claude-single:has(.claude-models) .account-wallpaper{top:680px}}
+
 
 /* Image appearance is shared with the console and does not alter quota text. */
 .account-wallpaper{opacity:calc(1 - var(--image-fade,.12))}
@@ -58,4 +36,44 @@
  /* Keep the empty view's illustration beside the message, within the panel PNG budget. */
  .account-scene[data-count="0"] .account-wallpaper{left:640px;width:640px;mask-image:linear-gradient(to right,transparent,#000 80px)}
  .account-scene[data-count="0"] .account-wallpaper img{object-position:right top}
+}
+
+/* New illustrated borders remain visible around the cards, including dense views. */
+@media(min-aspect-ratio:1/1){
+ .account-scene.account-scene-decorated .account-wallpaper{inset:0;width:100%;height:100%;mask-image:none}
+ .account-scene.account-scene-decorated .account-wallpaper img{object-position:center}
+ .account-scene-decorated .account-card{box-shadow:0 3px 14px rgba(81,57,33,.035)}
+}
+
+
+/* Dedicated portrait artwork keeps its complete border and lower subject area. */
+@media(max-aspect-ratio:1/1){
+ .account-scene[data-count] .account-wallpaper{inset:0;width:100%;height:100%;mask-image:none}
+ .account-scene[data-count] .account-wallpaper img{object-fit:cover;object-position:center}
+ .account-scene[data-count] .account-content{left:40px;top:44px;width:640px;height:auto;gap:18px}
+ .account-scene[data-count] .account-cards{display:flex;flex-direction:column;flex:none;gap:12px}
+ .account-scene[data-count] .account-card{box-sizing:border-box;display:flex;flex-direction:column;flex:none;height:148px;min-height:0;padding:10px 16px;gap:6px;border-radius:16px}
+ .account-scene[data-count] .account-card-identity{display:flex;flex-direction:row;justify-content:space-between;align-items:center;gap:10px;min-height:24px}
+ .account-scene[data-count] .account-card-top{flex:1;flex-wrap:nowrap;gap:8px;min-width:0}
+ .account-scene[data-count] .account-card h2{font-size:22px;line-height:24px}
+ .account-scene[data-count] .account-meta{flex:none;gap:10px;font-size:18px}
+ .account-scene[data-count] .account-status{font-size:18px}
+ .account-scene[data-count] .active-account-badge{font-size:16px;padding:2px 6px}
+ .account-scene[data-count] .account-email{display:none}
+ .account-scene[data-count] .account-card-quotas{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:1fr;gap:18px;flex:1}
+ .account-scene[data-count] .claude-quota{border:0;padding:0;grid-template-columns:1fr auto;grid-template-rows:22px 30px 5px 25px;gap:2px 6px;align-content:center}
+ .account-scene[data-count] .claude-quota h3{font-size:18px;line-height:22px}
+ .account-scene[data-count] .claude-quota-label{font-size:16px;grid-column:1;grid-row:2}
+ .account-scene[data-count] .claude-value{font-size:30px;grid-column:2;grid-row:2}
+ .account-scene[data-count] .claude-value small{font-size:18px}
+ .account-scene[data-count] .claude-reset strong{font-size:18px;line-height:25px}
+ .account-scene[data-count="4"] .account-card{height:174px}
+ .account-scene[data-count="3"] .account-card{height:220px;padding:16px 20px;gap:12px}
+ .account-scene[data-count="2"] .account-card{height:270px;padding:20px;gap:16px}
+ .account-scene[data-count="1"] .account-card{height:310px;padding:22px;gap:20px}
+ .account-scene:is([data-count="1"],[data-count="2"],[data-count="3"]) .claude-quota{grid-template-columns:1fr;grid-template-rows:25px 22px 46px 6px 26px;gap:5px}
+ .account-scene:is([data-count="1"],[data-count="2"],[data-count="3"]) .claude-value{grid-column:1;grid-row:3;font-size:42px}
+ .account-scene[data-count="1"] .claude-value{font-size:50px}
+ .account-scene[data-count="1"] .claude-quota{grid-template-rows:25px 22px 54px 6px 26px}
+ .account-scene[data-count="0"] .claude-empty{background:rgba(255,252,248,.92);padding:24px;border-radius:18px;margin-top:20px}
 }

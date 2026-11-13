@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from server import Studio, DISPLAY_PREFERENCES, IMAGE_APPEARANCE_DEFAULTS, IMAGE_APPEARANCE_BOUNDS, load_display_preferences, save_display_preferences
+from server import Studio, DISPLAY_PREFERENCES, IMAGE_APPEARANCE_DEFAULTS, IMAGE_APPEARANCE_BOUNDS, SCENE_PREFERENCES_DEFAULTS, load_display_preferences, save_display_preferences
 from panel_calibration import DEFAULT_CALIBRATION
 
 
@@ -32,7 +32,7 @@ class DisplayPreferenceTests(unittest.TestCase):
         studio.control({"subscription_background": "dragon"})
         studio.control({"subscription_background_transparency": 0})
         self.assertEqual(load_display_preferences(self.path), {
-            **IMAGE_APPEARANCE_DEFAULTS, "claude_background": "stand",
+            **IMAGE_APPEARANCE_DEFAULTS, **SCENE_PREFERENCES_DEFAULTS, "claude_background": "stand",
             "subscription_background": "dragon", "subscription_background_transparency": 0,
             "rotation": 270, "page": "system", "fps": 2, "resume_streaming": False, "panel_color_order": "rgb", "panel_calibration": dict(DEFAULT_CALIBRATION)})
         studio.control({"subscription_background": "none"})
@@ -67,6 +67,49 @@ class DisplayPreferenceTests(unittest.TestCase):
             self.path.write_text(json.dumps({'panel_color_order': value}), encoding='utf-8')
             expected = {'panel_color_order': value} if value in ('rgb', 'bgr', 'brg') else {}
             self.assertEqual(load_display_preferences(self.path), expected)
+
+    def test_backlight_loads_only_valid_integers(self):
+        for value in (0, 76, 100, -1, 101, True, '100', 50.5, None):
+            self.path.write_text(json.dumps({'brightness': value}), encoding='utf-8')
+            expected = {'brightness': value} if type(value) is int and 0 <= value <= 100 else {}
+            self.assertEqual(load_display_preferences(self.path), expected)
+
+    def test_invalid_scene_settings_cannot_poison_valid_preferences(self):
+        invalid = {'auto': 'true', 'interval': 1, 'note': ['text'], 'focus_duration': True,
+                   'subscription_view': 'unknown', 'subscription_auto': 1,
+                   'subscription_bucket': '', 'animation': {'speed': 0}}
+        self.path.write_text(json.dumps({**invalid, 'claude_background': 'greeting'}))
+        with self.assertLogs('turzx', level='WARNING'):
+            self.assertEqual(load_display_preferences(self.path), {'claude_background': 'greeting'})
+
+    def test_subscription_auto_rotation_remembers_last_subpage(self):
+        studio = self.studio()
+        studio.state.update(page='openai', auto=False, subscription_auto=True, subscription_view='billing')
+        studio.focus_deadline = None
+        studio.last_subscription_page_at = 0
+        studio.renderer = None
+        studio.session_id = 0
+        studio.stopping = unittest.mock.Mock()
+        studio.stopping.wait.side_effect = [False, True]
+        with patch('server.time.monotonic', return_value=100):
+            studio._clock()
+        self.assertEqual(studio.state['subscription_view'], 'entitlements')
+        self.assertEqual(load_display_preferences(self.path)['subscription_view'], 'entitlements')
+
+    def test_failed_automatic_subpage_save_keeps_displayed_subpage(self):
+        studio = self.studio()
+        studio.state.update(page='openai', auto=False, subscription_auto=True, subscription_view='billing')
+        studio.focus_deadline = None
+        studio.last_subscription_page_at = 0
+        studio.renderer = None
+        studio.session_id = 0
+        studio.stopping = unittest.mock.Mock()
+        studio.stopping.wait.side_effect = [False, True]
+        with patch('server.time.monotonic', return_value=100), \
+             patch('server.save_display_preferences', side_effect=OSError('disk full')), \
+             self.assertLogs('turzx', level='WARNING'):
+            studio._clock()
+        self.assertEqual(studio.state['subscription_view'], 'billing')
 
     def test_auto_rotation_saves_current_page(self):
         studio = self.studio()

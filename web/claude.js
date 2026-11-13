@@ -31,9 +31,9 @@
   }
   function wallpaper(background){
     if(background==='none')return '';
-    const files={stand:'claude-v3',thought:'claude-v3-thought',greeting:'claude-v3-greeting'};
+    const files={stand:'claude-v3-decorated-stand',thought:'claude-v3-decorated-thought',greeting:'claude-v3-decorated-greeting',floral:'claude-v4-floral',celestial:'claude-v4-celestial',atelier:'claude-v4-atelier',botanical:'claude-v4-botanical',paperland:'claude-v4-paperland',glasswave:'claude-v4-glasswave'};
     const prefix=Object.hasOwn(files,background)?files[background]:files.stand;
-    return `<picture class="account-wallpaper" aria-hidden="true"><img src="assets/claude/${prefix}-landscape.png" alt=""></picture>`;
+    return `<picture class="account-wallpaper" aria-hidden="true"><source media="(max-aspect-ratio: 1/1)" srcset="assets/claude/${prefix}-portrait.png"><img src="assets/claude/${prefix}-landscape.png" alt=""></picture>`;
   }
   function accountCard(account,index,data,offline){
     const active=(account.id!=null&&account.id===data.active_account_id)||account.is_active===true,stale=old(account,offline);
@@ -42,8 +42,8 @@
     return `<article class="account-card ${active?'is-active':''}"><div class="account-card-identity"><div class="account-card-top"><span class="account-number">${String(index+1).padStart(2,'0')}</span><h2 title="${safe(name)}">${safe(name)}</h2>${active?'<span class="account-card-status active-account-badge">当前</span>':''}</div><p class="account-email">${safe(account.email||'')}</p><div class="account-meta"><span>${safe(account.subscription_type||'')}</span><span class="account-status ${stale?'stale':status==='实时'?'live':'unknown'}">${status}</span></div></div><div class="account-card-quotas">${windows(account,stale,true)}</div></article>`;
   }
   function scene(accounts,data,offline,singleView=false,background='stand'){
-    const count=accounts.length;
-    return `<section class="claude-screen account-scene ${singleView?'claude-single':''}" data-count="${count}" aria-label="Claude ${singleView?'订阅':'多账号'}">${wallpaper(background)}<div class="account-content"><header class="claude-head"><h1>${mark}Claude ${singleView?'订阅':'多账号'}${!singleView?`<span>· ${count} 个</span>`:''}</h1>${data.accounts?.length>5&&!singleView?`<span>共 ${data.accounts.length} 个，显示 5 个</span>`:''}</header>${count?`<div class="account-cards">${accounts.map((a,i)=>accountCard(a,i,data,offline||data.stale===true)).join('')}</div>${singleView?models(accounts[0]):''}`:`<div class="claude-empty"><span aria-hidden="true">＋</span><h2>${singleView?'等待连接当前账号':'还没有可显示的账号'}</h2><p>连接账号服务后，显示 5h、7d 和 Fable 已使用额度。</p></div>`}</div></section>`;
+    const count=accounts.length,decorated=['stand','thought','greeting','floral','celestial','atelier','botanical','paperland','glasswave'].includes(background);
+    return `<section class="claude-screen account-scene ${singleView?'claude-single':''} ${decorated?'account-scene-decorated':''}" data-count="${count}" aria-label="Claude ${singleView?'订阅':'多账号'}">${wallpaper(background)}<div class="account-content"><header class="claude-head"><h1>${mark}Claude ${singleView?'订阅':'多账号'}${!singleView?`<span>· ${count} 个</span>`:''}</h1>${data.accounts?.length>5&&!singleView?`<span>共 ${data.accounts.length} 个，显示 5 个</span>`:''}</header>${count?`<div class="account-cards">${accounts.map((a,i)=>accountCard(a,i,data,offline||data.stale===true)).join('')}</div>${singleView?models(accounts[0]):''}`:`<div class="claude-empty"><span aria-hidden="true">＋</span><h2>${singleView?'等待连接当前账号':'还没有可显示的账号'}</h2><p>连接账号服务后，显示 5h、7d 和 Fable 已使用额度。</p></div>`}</div></section>`;
   }
   function single(data={},offline=false,background='stand'){
     const account=activeAccount(data);

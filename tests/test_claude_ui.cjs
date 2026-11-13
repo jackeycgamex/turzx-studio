@@ -59,7 +59,7 @@ const many=overview({accounts:Array.from({length:7},(_,i)=>account(String(i),20)
 assert.equal((many.match(/<article/g)||[]).length,5);assert.match(many,/账号 6/);
 
 for(const render of [single,overview]){
- for(const [value,file] of [['stand','claude-v3'],['thought','claude-v3-thought'],['greeting','claude-v3-greeting']])assert.ok(render(data,false,value).includes(file+'-landscape.png'));
+ for(const [value,file] of [['stand','claude-v3-decorated-stand'],['thought','claude-v3-decorated-thought'],['greeting','claude-v3-decorated-greeting'],...['floral','celestial','atelier','botanical','paperland','glasswave'].map(key=>[key,'claude-v4-'+key])]){const html=render(data,false,value);assert.ok(html.includes(file+'-landscape.png'));assert.ok(html.includes(file+'-portrait.png'));assert.match(html,/max-aspect-ratio: 1\/1/);}
  assert.doesNotMatch(render(data,false,'none'),/account-wallpaper/);
- assert.match(render(data,false,'__proto__'),/claude-v3-landscape.png/);
+ assert.match(render(data,false,'__proto__'),/claude-v3-decorated-stand-landscape.png/);
 }
