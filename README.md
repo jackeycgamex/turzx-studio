@@ -12,6 +12,8 @@ A local Windows / macOS control panel and page renderer for the TURZX 5.2-inch U
 
 ![生成氛围页面](docs/images/ambient.png)
 
+macOS 独立 [Claude 账号面板 App](docs/account-app.md) 复用副屏画面。点击账号卡片即可通过 cswap 切换本机默认 Claude Code 账号。
+
 ## 支持范围
 
 | 项目 | 当前支持 |
