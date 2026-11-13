@@ -1,6 +1,7 @@
 """Check native PNG payloads from test_decorated_backgrounds.cjs, without USB."""
 from io import BytesIO
 import json
+import os
 from pathlib import Path
 import sys
 
@@ -10,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from panel_calibration import prepare_panel_image
 from server import encode_panel_png
 
-folder = Path('runtime/decor-backgrounds')
+folder = Path(os.environ.get('TURZX_VERIFY_OUTPUT', 'runtime/decor-backgrounds'))
 rows = []
 for path in sorted(folder.glob('*-[HV].png')):
     with Image.open(path) as source:

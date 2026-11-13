@@ -33,7 +33,7 @@
     if(background==='none')return '';
     const files={stand:'claude-v3-decorated-stand',thought:'claude-v3-decorated-thought',greeting:'claude-v3-decorated-greeting',floral:'claude-v4-floral',celestial:'claude-v4-celestial',atelier:'claude-v4-atelier',botanical:'claude-v4-botanical',paperland:'claude-v4-paperland',glasswave:'claude-v4-glasswave'};
     const prefix=Object.hasOwn(files,background)?files[background]:files.stand;
-    return `<picture class="account-wallpaper" aria-hidden="true"><img src="assets/claude/${prefix}-landscape.png" alt=""></picture>`;
+    return `<picture class="account-wallpaper" aria-hidden="true"><source media="(max-aspect-ratio: 1/1)" srcset="assets/claude/${prefix}-portrait.png"><img src="assets/claude/${prefix}-landscape.png" alt=""></picture>`;
   }
   function accountCard(account,index,data,offline){
     const active=(account.id!=null&&account.id===data.active_account_id)||account.is_active===true,stale=old(account,offline);

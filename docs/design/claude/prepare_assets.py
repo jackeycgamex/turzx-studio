@@ -23,8 +23,21 @@ def main() -> None:
                         help="Import and export all six decorated backgrounds named <id>.png")
     parser.add_argument("--originals-dir", type=Path,
                         help="Import decorated edits of stand, thought and greeting")
+    parser.add_argument("--portraits-dir", type=Path,
+                        help="Import nine dedicated portrait artworks named <id>.png")
     args = parser.parse_args()
-    if args.collection_dir or args.originals_dir:
+    if args.portraits_dir:
+        sources = {key: args.portraits_dir / f"{key}.png"
+                   for key in (*DECORATED_ORIGINALS, *DECORATED_BACKGROUNDS)}
+        missing = [str(path) for path in sources.values() if not path.is_file()]
+        if missing:
+            parser.error("Missing portrait backgrounds: " + ", ".join(missing))
+        for key, source in sources.items():
+            version = f"v3-decorated-{key}" if key in DECORATED_ORIGINALS else f"v4-{key}"
+            destination = Path(__file__).with_name(f"claude-{version}-portrait-original.png")
+            shutil.copyfile(source, destination)
+            export_version(version, only_orientation="portrait")
+    elif args.collection_dir or args.originals_dir:
         sources = {}
         if args.collection_dir:
             sources.update({f"v4-{key}": args.collection_dir / f"{key}.png" for key in DECORATED_BACKGROUNDS})
@@ -41,21 +54,22 @@ def main() -> None:
         export_version(args.version)
 
 
-def export_version(version: str) -> None:
+def export_version(version: str, only_orientation=None) -> None:
     prefix = f"claude-{version}" if version != "v1" else "claude"
     from_landscape = version.startswith(("v3", "v4"))
     decorated = version.startswith(("v4-", "v3-decorated-"))
     DESTINATION.mkdir(parents=True, exist_ok=True)
     quantize_channel = [min(255, ((value + 4) // 8) * 8) for value in range(256)]
-    # The decorated scenes use a responsive landscape artwork strip in portrait;
-    # exporting a separate cropped portrait would discard its surrounding border.
-    sizes = (("landscape", (1280, 720)),) if decorated else (
-        ("landscape", (1280, 720)), ("portrait", (720, 1280)))
+    sizes = (("landscape", (1280, 720)), ("portrait", (720, 1280)))
     for orientation, size in sizes:
-        source_orientation = "landscape" if from_landscape else orientation
+        if only_orientation and orientation != only_orientation:
+            continue
+        source_orientation = "landscape" if from_landscape and not decorated else orientation
         source = Path(__file__).with_name(f"{prefix}-{source_orientation}-original.png")
+        if decorated and orientation == "portrait" and not source.exists() and not only_orientation:
+            continue
         with Image.open(source) as original:
-            if from_landscape and orientation == "portrait":
+            if from_landscape and not decorated and orientation == "portrait":
                 picture = ImageOps.fit(original.convert("RGB"), size, Image.Resampling.LANCZOS,
                                        centering=(1, .5))
             else:
