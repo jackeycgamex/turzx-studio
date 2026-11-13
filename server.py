@@ -40,7 +40,7 @@ SUBSCRIPTION_BACKGROUNDS = ("none", "it", "anime", "dragon")
 CLAUDE_BACKGROUNDS = ("stand", "thought", "greeting", "none")
 IMAGE_APPEARANCE_DEFAULTS = {"image_brightness": 112, "image_saturation": 85, "image_fade": 12}
 IMAGE_APPEARANCE_BOUNDS = {"image_brightness": (80, 140), "image_saturation": (50, 120), "image_fade": (0, 50)}
-DISPLAY_PREFERENCES = ("subscription_background", "subscription_background_transparency", "rotation", "page", "fps", "resume_streaming", "panel_color_order", "panel_calibration", "claude_background", *IMAGE_APPEARANCE_DEFAULTS)
+DISPLAY_PREFERENCES = ("subscription_background", "subscription_background_transparency", "rotation", "page", "fps", "resume_streaming", "brightness", "panel_color_order", "panel_calibration", "claude_background", *IMAGE_APPEARANCE_DEFAULTS)
 LOG = logging.getLogger("turzx")
 
 
@@ -55,6 +55,9 @@ def load_display_preferences(path):
     if not isinstance(saved, dict):
         return {}
     result = {}
+    brightness = saved.get("brightness")
+    if type(brightness) is int and 0 <= brightness <= 100:
+        result["brightness"] = brightness
     if saved.get("claude_background") in CLAUDE_BACKGROUNDS:
         result["claude_background"] = saved["claude_background"]
     for key, (low, high) in IMAGE_APPEARANCE_BOUNDS.items():
@@ -84,7 +87,7 @@ def load_display_preferences(path):
 
 
 def save_display_preferences(path, state):
-    state = {"claude_background": "stand", **IMAGE_APPEARANCE_DEFAULTS, **state}
+    state = {"brightness": None, "claude_background": "stand", **IMAGE_APPEARANCE_DEFAULTS, **state}
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = None
     try:
@@ -237,6 +240,11 @@ class Studio:
                     self.device = TurzxWinUSB()
                     info = self.device.descriptor_info()
                     self.device.sync()
+                    # Backlight is a volatile device setting; replay the user's
+                    # saved value on every connection before rendering frames.
+                    brightness = self.state["brightness"]
+                    if brightness is not None:
+                        self.device.brightness(brightness)
                 (RUNTIME / "usb-descriptors.json").write_text(
                     json.dumps(info, ensure_ascii=False, indent=2), encoding="utf-8")
                 node = shutil.which("node")

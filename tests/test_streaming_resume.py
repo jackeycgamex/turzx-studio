@@ -45,6 +45,46 @@ class StreamingResumeTests(unittest.TestCase):
         self.TurzxWinUSB.assert_not_called()
         self.assertFalse(app.state['streaming'])
 
+    def test_saved_backlight_is_restored_on_start_and_reconnect(self):
+        for value in (0, 100):
+            with self.subTest(value=value):
+                self.path.write_text(json.dumps({'resume_streaming': True, 'brightness': value}))
+                app = self.create()
+                device = self.TurzxWinUSB.return_value
+                device.reset_mock()
+                app.try_resume_streaming()
+                device.brightness.assert_called_once_with(value)
+                app.stop()
+                app.start()
+                self.assertEqual(device.brightness.call_count, 2)
+                app.close()
+
+    def test_unknown_backlight_is_not_overwritten(self):
+        app = self.create(True)
+        app.try_resume_streaming()
+        self.TurzxWinUSB.return_value.brightness.assert_not_called()
+
+    def test_backlight_change_survives_service_restart(self):
+        app = self.create()
+        app.start()
+        app.control({'brightness': 76})
+        app.close()
+        self.assertEqual(load_display_preferences(self.path)['brightness'], 76)
+        reloaded = self.create()
+        self.TurzxWinUSB.return_value.brightness.reset_mock()
+        reloaded.try_resume_streaming()
+        self.TurzxWinUSB.return_value.brightness.assert_called_once_with(76)
+
+    def test_failed_backlight_restore_prevents_renderer_start(self):
+        self.path.write_text(json.dumps({'resume_streaming': True, 'brightness': 100}))
+        app = self.create()
+        self.TurzxWinUSB.return_value.brightness.side_effect = OSError('backlight failed')
+        with self.assertRaises(OSError):
+            app.start()
+        self.Popen.assert_not_called()
+        self.TurzxWinUSB.return_value.close.assert_called()
+        self.assertFalse(app.state['streaming'])
+
     def test_saved_state_is_not_reported_as_connected_before_resume(self):
         app = self.create(True)
         self.assertFalse(app.state['streaming'])

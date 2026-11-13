@@ -68,6 +68,12 @@ class DisplayPreferenceTests(unittest.TestCase):
             expected = {'panel_color_order': value} if value in ('rgb', 'bgr', 'brg') else {}
             self.assertEqual(load_display_preferences(self.path), expected)
 
+    def test_backlight_loads_only_valid_integers(self):
+        for value in (0, 76, 100, -1, 101, True, '100', 50.5, None):
+            self.path.write_text(json.dumps({'brightness': value}), encoding='utf-8')
+            expected = {'brightness': value} if type(value) is int and 0 <= value <= 100 else {}
+            self.assertEqual(load_display_preferences(self.path), expected)
+
     def test_auto_rotation_saves_current_page(self):
         studio = self.studio()
         studio.state.update(auto=True, interval=5, subscription_auto=False)
