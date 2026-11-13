@@ -20,6 +20,26 @@ macOS 的屏幕有时以 USB 配置 `0` 接入。配置 `0` 表示尚未选择�
 
 程序不重置 USB 设备，不卸载内核驱动，不结束其他屏幕软件。接口被占用时，停止占用程序后重新连接。检测到多块同型号屏幕时，程序拒绝自动选择。
 
+## 登录后自动启动
+
+使用项目虚拟环境安装当前用户的 LaunchAgent：
+
+```sh
+.venv/bin/python autostart_macos.py
+```
+
+安装后立即启动服务。以后每次开机并登录此 macOS 用户，后台自动启动，不打开浏览器或终端。若 8765 端口已有服务，请在管理页关闭服务后再安装。重复安装不会启动第二个进程。
+
+服务恢复 `runtime/display-preferences.json` 中的页面、方向、图片和颜色校准。此前正在投屏时会自动恢复；此前手动停止投屏时保持停止。USB 晚于服务接入也会自动恢复。异常退出后 launchd 重启服务；管理页正常关闭服务后，当次登录不会重启。
+
+日志位于 `runtime/launchd.stdout.log`、`runtime/launchd.stderr.log` 和 `runtime/server.log`。这是登录后的用户服务，不是登录前的系统服务。移动项目或虚拟环境后，应取消并重新安装启动项。
+
+取消启动项并停止它管理的服务：
+
+```sh
+.venv/bin/python autostart_macos.py --disable
+```
+
 ## 帧格式与所有权
 
 原生传输帧为 `720×1280 RGBA PNG`，全页 alpha 为 `255`。横屏页面按控制台选择的角度旋转后传输。完整 PNG 不超过 `1 MiB`。

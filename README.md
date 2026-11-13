@@ -41,6 +41,8 @@ npm ci
 
 正在投屏时关闭服务，下次启动会自动继续投屏；先点击“停止”再关闭，下次保持停止。USB 断开后服务会等待设备接回并自动恢复：设备缺席时每 2 秒只读检查，连接失败时按 2、4、8、16、30 秒间隔重试，成功发送一帧后重置间隔。手动停止或关闭服务会取消自动重连。
 
+macOS 用户使用 `.venv/bin/python autostart_macos.py` 启用登录启动；取消时加 `--disable`。配置、恢复投屏和日志说明见 [macOS 登录启动](docs/macos.md#登录后自动启动)。
+
 ### Windows 登录后静默启动
 
 在项目目录执行 `./autostart.ps1` 启用当前 Windows 用户的登录启动项，执行 `./autostart.ps1 -Disable` 取消。启用后直接由 `pythonw.exe` 运行 `background_start.pyw`，不经过 PowerShell、CMD 或浏览器，不弹控制台，也不打开控制页面。后台按保存的选项决定是否投屏；USB 稍后接入也会恢复。启动日志在 `runtime/background-start.log`。
