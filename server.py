@@ -22,17 +22,25 @@ from urllib.parse import unquote, urlsplit
 
 from PIL import Image
 from telemetry import Telemetry
-from turzx_usb import TurzxWinUSB, enumerate_device_paths
+if os.name == "nt":
+    from turzx_usb import TurzxWinUSB, enumerate_device_paths
+else:
+    from turzx_libusb import TurzxLibUSB as TurzxWinUSB, enumerate_device_paths
 from animation_state import AnimationState
 from subscription import SubscriptionMonitor
+from claude_subscription import ClaudeMonitor
+from panel_calibration import DEFAULT_CALIBRATION, validate_calibration, prepare_panel_image
 
 ROOT = Path(__file__).resolve().parent
 WEB = ROOT / "web"
 RUNTIME = ROOT / "runtime"
-PAGES = ("system", "network", "clock", "focus", "ambient", "openai", "media", "guide", "calibrate")
+PAGES = ("system", "network", "clock", "focus", "ambient", "openai", "claude", "cswap", "media", "guide", "calibrate")
 SUBSCRIPTION_VIEWS = ("overview", "billing", "entitlements")
 SUBSCRIPTION_BACKGROUNDS = ("none", "it", "anime", "dragon")
-DISPLAY_PREFERENCES = ("subscription_background", "subscription_background_transparency", "rotation", "page", "fps", "resume_streaming")
+CLAUDE_BACKGROUNDS = ("stand", "thought", "greeting", "none")
+IMAGE_APPEARANCE_DEFAULTS = {"image_brightness": 112, "image_saturation": 85, "image_fade": 12}
+IMAGE_APPEARANCE_BOUNDS = {"image_brightness": (80, 140), "image_saturation": (50, 120), "image_fade": (0, 50)}
+DISPLAY_PREFERENCES = ("subscription_background", "subscription_background_transparency", "rotation", "page", "fps", "resume_streaming", "panel_color_order", "panel_calibration", "claude_background", *IMAGE_APPEARANCE_DEFAULTS)
 LOG = logging.getLogger("turzx")
 
 
@@ -47,6 +55,12 @@ def load_display_preferences(path):
     if not isinstance(saved, dict):
         return {}
     result = {}
+    if saved.get("claude_background") in CLAUDE_BACKGROUNDS:
+        result["claude_background"] = saved["claude_background"]
+    for key, (low, high) in IMAGE_APPEARANCE_BOUNDS.items():
+        value = saved.get(key)
+        if type(value) is int and low <= value <= high:
+            result[key] = value
     if saved.get("subscription_background") in SUBSCRIPTION_BACKGROUNDS:
         result["subscription_background"] = saved["subscription_background"]
     value = saved.get("subscription_background_transparency")
@@ -59,10 +73,18 @@ def load_display_preferences(path):
             result[key] = saved[key]
     if type(saved.get("resume_streaming")) is bool:
         result["resume_streaming"] = saved["resume_streaming"]
+    if saved.get("panel_color_order") in ("rgb", "bgr", "brg"):
+        result["panel_color_order"] = saved["panel_color_order"]
+    if "panel_calibration" in saved:
+        try:
+            result["panel_calibration"] = validate_calibration(saved["panel_calibration"])
+        except ValueError:
+            LOG.warning("Invalid panel calibration; using defaults.")
     return result
 
 
 def save_display_preferences(path, state):
+    state = {"claude_background": "stand", **IMAGE_APPEARANCE_DEFAULTS, **state}
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = None
     try:
@@ -101,12 +123,16 @@ class Studio:
         self.metrics = Telemetry()
         self.motion = AnimationState()
         self.subscription = SubscriptionMonitor()
+        self.claude = ClaudeMonitor()
         self.last_subscription_page_at = time.monotonic()
         self.frame_times = deque(maxlen=30)
         self.state = {
+            **IMAGE_APPEARANCE_DEFAULTS,
+            "claude_background": "stand",
             "page": "system", "rotation": 270, "fps": 2, "auto": False,
             "interval": 20, "streaming": False, "connected": False, "resume_streaming": False,
-            "error": None, "brightness": None,
+            "error": None, "brightness": None, "panel_color_order": "rgb",
+            "panel_calibration": dict(DEFAULT_CALIBRATION),
             "stats": {"frames": 0, "last_ms": None, "bytes": 0,
                       "effective_fps": 0, "last_ack": None},
             "device": {"name": "TURZX 5.2", "width": 1280, "height": 720,
@@ -129,6 +155,7 @@ class Studio:
             result = copy.deepcopy(self.state)
             result["animation"] = self.motion.snapshot()
             result["subscription"] = self.subscription.snapshot()
+            result["claude"] = self.claude.snapshot()
             if self.focus_deadline is not None:
                 result["focus"]["remaining"] = max(0, math.ceil(self.focus_deadline-time.monotonic()))
             return result
@@ -289,14 +316,26 @@ class Studio:
     def control(self, changes):
         if not isinstance(changes, dict):
             raise ValueError("请求必须为 JSON 对象。")
-        allowed = {"page", "rotation", "fps", "auto", "interval", "note", "brightness", "action", "focus_duration", "animation",
+        allowed = {"panel_calibration", "panel_color_order", "page", "rotation", "fps", "auto", "interval", "note", "brightness", "action", "focus_duration", "animation",
                    "subscription_view", "subscription_auto", "subscription_bucket", "subscription_background", "subscription_background_transparency"}
+        allowed.add("claude_background")
+        allowed.update(IMAGE_APPEARANCE_DEFAULTS)
         if set(changes)-allowed:
             raise ValueError("存在不支持的设置项。")
         action = changes.get("action")
-        if action not in (None, "start", "stop", "focus_start", "focus_pause", "focus_reset", "shutdown", "subscription_refresh"):
+        if action not in (None, "start", "stop", "focus_start", "focus_pause", "focus_reset", "shutdown", "subscription_refresh", "claude_refresh"):
             raise ValueError("不支持的操作。")
         for key, value in changes.items():
+            if key == "claude_background" and value not in CLAUDE_BACKGROUNDS:
+                raise ValueError("未知 Claude 背景。")
+            if key in IMAGE_APPEARANCE_BOUNDS:
+                low, high = IMAGE_APPEARANCE_BOUNDS[key]
+                if type(value) is not int or not low <= value <= high:
+                    raise ValueError(f"{key} 应为 {low} 到 {high} 的整数。")
+            if key == "panel_calibration":
+                validate_calibration(value)
+            if key == "panel_color_order" and value not in ("rgb", "bgr", "brg"):
+                raise ValueError("屏幕颜色顺序应为 rgb、bgr 或 brg。")
             if key == "subscription_background_transparency" and (type(value) is not int or not 0 <= value <= 100):
                 raise ValueError("背景透明度应为 0 到 100 的整数。")
             if key == "subscription_background" and value not in SUBSCRIPTION_BACKGROUNDS:
@@ -335,8 +374,8 @@ class Studio:
                 save_display_preferences(self.preferences_path, {**self.state, **changes})
             if "animation" in changes:
                 self.motion.update(changes["animation"])
-            for key in ("page", "rotation", "fps", "auto", "interval", "note", "brightness",
-                        "subscription_view", "subscription_auto", "subscription_bucket", "subscription_background", "subscription_background_transparency"):
+            for key in ("panel_calibration", "panel_color_order", "page", "rotation", "fps", "auto", "interval", "note", "brightness",
+                        "subscription_view", "subscription_auto", "subscription_bucket", "subscription_background", "subscription_background_transparency", "claude_background", *IMAGE_APPEARANCE_DEFAULTS):
                 if key in changes:
                     self.state[key] = changes[key]
             if "page" in changes or "auto" in changes:
@@ -372,6 +411,8 @@ class Studio:
             self.stop()
         elif action == "subscription_refresh":
             self.subscription.refresh()
+        elif action == "claude_refresh":
+            self.claude.refresh()
         return self.snapshot()
 
     def frame(self, data, rotation, expected_session, render_ms=None, capture="screenshot"):
@@ -379,16 +420,10 @@ class Studio:
         if expected_session != self.session_id or not self.snapshot()["streaming"]:
             raise SessionPaused("推送已暂停。")
         image = Image.open(io.BytesIO(data))
-        expected = (1280, 720) if rotation in (90, 270) else (720, 1280)
-        if image.size != expected:
-            raise ValueError(f"画面尺寸 {image.size} 与方向 {rotation} 不匹配。")
-        # TURZX's PNG overlay decoder expects 4-channel PNGs. RGB PNGs can
-        # ACK successfully yet show repeated strips over the factory image.
-        # Our pages are full frames, so make alpha explicitly opaque.
-        image = image.convert("RGBA")
-        image.putalpha(255)
-        if rotation:
-            image = image.rotate(rotation, expand=True)
+        frame_settings = self.snapshot()
+        color_order = frame_settings["panel_color_order"]
+        image = prepare_panel_image(image, rotation, color_order,
+                                    frame_settings.get("panel_calibration"))
         stream = io.BytesIO()
         image.save(stream, "PNG", compress_level=1)
         payload = stream.getvalue()
@@ -424,7 +459,8 @@ class Studio:
             s["session_fps"] = round(s["frames"]/max(.01, tick-self.session_started), 2)
             s.update(encode_ms=round(encode_ms, 2), render_ms=render_ms, capture=capture, last_frame_bytes=len(payload))
         record = {"time": now, "page": self.snapshot()["page"], "rotation": rotation,
-                  "bytes": len(payload), "usb_ms": round(ms, 3), "format": kind,
+                  "bytes": len(payload), "usb_ms": round(ms, 3), "format": kind, "panel_color_order": color_order,
+                  "panel_calibration": frame_settings.get("panel_calibration"),
                   "animation": self.motion.settings["preset"], "encode_ms": round(encode_ms, 3),
                   "render_ms": render_ms, "capture": capture,
                   "total_ms": round((time.perf_counter()-started)*1000, 3),
@@ -438,6 +474,7 @@ class Studio:
         self.stop()
         self.metrics.close()
         self.subscription.close()
+        self.claude.close()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -483,6 +520,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, self.app.metrics.snapshot())
         if route == "/api/subscription":
             return self.send(200, self.app.subscription.snapshot())
+        if route == "/api/claude":
+            return self.send(200, self.app.claude.snapshot())
         if route == "/api/info":
             return self.send(200, json.loads((ROOT / "device-info.json").read_text(encoding="utf-8")))
         if route.startswith("/api/"):

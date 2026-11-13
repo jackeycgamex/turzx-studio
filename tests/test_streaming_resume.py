@@ -18,7 +18,7 @@ class StreamingResumeTests(unittest.TestCase):
         self.addCleanup(folder.cleanup)
         self.root = Path(folder.name)
         self.path = self.root / 'display-preferences.json'
-        for name in ('Telemetry', 'SubscriptionMonitor', 'threading.Thread', 'shutil.which',
+        for name in ('Telemetry', 'SubscriptionMonitor', 'ClaudeMonitor', 'threading.Thread', 'shutil.which',
                      'subprocess.Popen', 'TurzxWinUSB', 'enumerate_device_paths'):
             patcher = patch('server.' + name)
             setattr(self, name.split('.')[-1], patcher.start())
@@ -27,6 +27,7 @@ class StreamingResumeTests(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
         self.SubscriptionMonitor.return_value.snapshot.return_value = {}
+        self.ClaudeMonitor.return_value.snapshot.return_value = {}
         self.TurzxWinUSB.return_value.descriptor_info.return_value = {}
         self.which.return_value = 'node'
         self.enumerate_device_paths.return_value = ['panel']
@@ -180,6 +181,78 @@ class StreamingResumeTests(unittest.TestCase):
         app.frame(body.getvalue(), 270, app.session_id, 0)
         self.assertEqual(app.reconnect_delay, 2)
         self.assertEqual(app.reconnect_at, 0)
+
+    def test_panel_color_correction_preserves_alpha_orientation_and_source(self):
+        app = self.create()
+        app.start()
+        self.TurzxWinUSB.return_value.draw_png.return_value = b'ack'
+        source = Image.new('RGBA', (1280, 720), (208, 107, 49, 0))
+        source.putpixel((0, 0), (255, 0, 0, 255))
+        body = io.BytesIO()
+        source.save(body, 'PNG')
+        original = body.getvalue()
+        for order in ('rgb', 'bgr', 'brg'):
+            app.control({'panel_color_order': order})
+            app.frame(original, 270, app.session_id, 0)
+            payload = self.TurzxWinUSB.return_value.draw_png.call_args.args[0]
+            sent = Image.open(io.BytesIO(payload))
+            self.assertEqual(sent.size, (720, 1280))
+            self.assertEqual(payload[25], 6)
+            self.assertEqual(sent.getchannel('A').getextrema(), (255, 255))
+            self.assertEqual(sent.getpixel((20, 20)), {'rgb': (208, 107, 49, 255), 'bgr': (49, 107, 208, 255), 'brg': (49, 208, 107, 255)}[order])
+            self.assertEqual(sent.getpixel((719, 0)), {'rgb': (255, 0, 0, 255), 'bgr': (0, 0, 255, 255), 'brg': (0, 255, 0, 255)}[order])
+            self.assertEqual(load_display_preferences(app.preferences_path)['panel_color_order'], order)
+        self.assertEqual(body.getvalue(), original)
+
+    def test_invalid_color_order_cannot_change_output_or_saved_setting(self):
+        app = self.create()
+        for value in (None, True, 'bgra', [], {}):
+            with self.assertRaises(ValueError):
+                app.control({'panel_color_order': value})
+        self.assertEqual(app.state['panel_color_order'], 'rgb')
+
+    def test_ratio_preserving_tone_reaches_real_frame_entry(self):
+        app = self.create()
+        profile = {'gamma': .45, 'saturation': 1, 'offset_x': -60,
+                   'offset_y': 0, 'tone_mode': 'preserve_rgb'}
+        app.control({'panel_calibration': profile, 'panel_color_order': 'brg'})
+        app.start()
+        self.TurzxWinUSB.return_value.draw_png.return_value = b'ack'
+        body = io.BytesIO()
+        Image.new('RGB', (1280, 720), (204, 120, 82)).save(body, 'PNG')
+        app.frame(body.getvalue(), 270, app.session_id)
+        payload = self.TurzxWinUSB.return_value.draw_png.call_args.args[0]
+        result = Image.open(io.BytesIO(payload))
+        self.assertEqual(result.getpixel((0, 0)), (93, 231, 136, 255))
+        self.assertEqual(result.size, (720, 1280))
+        self.assertEqual(payload[25], 6)
+        self.assertEqual(load_display_preferences(app.preferences_path)['panel_calibration'], profile)
+
+    def test_confirmed_calibration_reaches_frame_and_survives_restart(self):
+        app = self.create()
+        profile = {'gamma': .6, 'saturation': .8, 'offset_x': -60, 'offset_y': 0}
+        app.control({'panel_calibration': profile, 'panel_color_order': 'brg'})
+        app.start()
+        self.TurzxWinUSB.return_value.draw_png.return_value = b'ack'
+        source = Image.new('RGBA', (1280, 720), (128, 128, 128, 0))
+        source.putpixel((0, 0), (255, 255, 255, 255))
+        body = io.BytesIO()
+        source.save(body, 'PNG')
+        app.frame(body.getvalue(), 270, app.session_id)
+        payload = self.TurzxWinUSB.return_value.draw_png.call_args.args[0]
+        result = Image.open(io.BytesIO(payload))
+        self.assertEqual(result.getpixel((659, 0)), (255, 255, 255, 255))
+        self.assertEqual(result.getpixel((0, 0)), (169, 169, 169, 255))
+        self.assertEqual(result.getchannel('A').getextrema(), (255, 255))
+        self.assertEqual(payload[25], 6)
+        app.stop()
+        reloaded = self.create()
+        self.assertEqual(reloaded.state['panel_calibration'], profile)
+        before = self.path.read_bytes()
+        with self.assertRaises(ValueError):
+            reloaded.control({'panel_calibration': {**profile, 'gamma': True}})
+        self.assertEqual(self.path.read_bytes(), before)
+        self.assertEqual(reloaded.state['panel_calibration'], profile)
 
 
 if __name__ == '__main__':
