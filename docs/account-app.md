@@ -16,6 +16,10 @@ python3 macos/build_account_app.py --output "$HOME/Applications/Claude 账号面
 
 构建需要 macOS Swift 编译器、Python 3.10+ 和已安装的 `cswap`。App 包含网页、图片、Python 服务和原生窗口程序。App 使用构建时的本机 Python 和 cswap 路径，因此不是跨机器分发包。移动本机代码仓库不影响已经构建的 App。Python 或 cswap 的安装路径改变时，需要重新构建。
 
+App 内的布局和图片是构建时的副本。更新投屏源码不会更新已安装的 App。投屏页面更新后，须从包含相同 `web/claude.js`、`web/claude.css` 和图片资源的源码重建 App，再替换安装包。运行中的服务只同步背景选择和图片调节值。
+
+2026-11-16 校验：构建号 3 使用与现有投屏服务相同的布局和图片，并将默认字重同步为 450。30 组浏览器图像对比覆盖横屏、竖屏、0–5 个账号和 10 种背景。对比隐藏 App 专用的操作提示，账号画面逐字节一致。实体屏画面未在本次验证中拍照。
+
 也可在浏览器使用：
 
 ```sh
@@ -43,7 +47,10 @@ node --check web/account-app.js
 node tests/test_claude_ui.cjs
 # 启动 account_app.py 后执行：
 node tests/test_account_app_ui.cjs
+node tests/test_account_app_parity.cjs
 ```
+
+图像对比要求同时运行副屏服务与账号面板服务，并使用同一份模拟数据。`ACCOUNT_APP_URL` 和 `SCREEN_URL` 可分别指定测试服务地址。图像对比不修改投屏状态，也不切换真实账号。
 
 后端测试使用模拟命令，覆盖成功、已是当前账号、目标不符、错误返回、超时、无效编号、过期快照、并发请求和跨站请求。浏览器测试使用模拟数据，验证 1280×720、720×1280 和 390×844 布局，以及点击、键盘、焦点、请求锁定和失败显示。测试不切换真实账号。
 
