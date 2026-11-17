@@ -4,6 +4,7 @@ from pathlib import Path
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 
 from claude_subscription import ClaudeMonitor, MAX_SNAPSHOT_BYTES, normalize_snapshot
 
@@ -232,7 +233,8 @@ class ClaudeSnapshotTests(unittest.TestCase):
         snapshot["accounts"].clear()
         self.assertEqual(len(self.monitor.snapshot()["accounts"]), 1)
 
-    def test_thread_reads_and_closes_without_network(self):
+    @patch("claude_subscription.ClaudeTokenUsage")
+    def test_thread_reads_and_closes_without_network(self, token_usage):
         self.path.write_text(json.dumps(sample()), encoding="utf-8")
         monitor = ClaudeMonitor(self.path, clock=lambda: NOW, poll_seconds=.05)
         self.addCleanup(monitor.close)

@@ -8,6 +8,18 @@
   const used = quota => finite(quota?.utilization) && quota.utilization>=0 && quota.utilization<=100 ? quota.utilization : null;
   const remaining = quota => used(quota)===null ? null : 100-used(quota);
   const percent = value => finite(value) ? new Intl.NumberFormat('zh-CN', {maximumFractionDigits:1}).format(value) : '—';
+  const formatTokens = value => {
+    if(!finite(value)||value<0)return '—';
+    const units=[[1e12,'T'],[1e9,'B'],[1e6,'M'],[1e3,'K']];
+    const [divisor,unit]=units.find(([n])=>value>=n)||units[3];
+    return (value/divisor).toFixed(1)+unit;
+  };
+  function tokenSummary(usage){
+    const groups=[['今日',usage?.today],['本周',usage?.week]];
+    const updated=finite(usage?.updated_at)?new Date(usage.updated_at*1000).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai'}):'';
+    const freshness=usage?.status==='ok'?'': '；统计暂未更新';
+    return `<div class="claude-token-summary" aria-label="本机 Claude 使用统计" title="本机 Claude Code 使用记录；含输入、输出与缓存；本周从周一开始；金额按标准 API token 价格折算${updated?`；统计时间 ${safe(updated)}`:''}${freshness}">${groups.map(([name,row])=>`<div class="claude-token-period"><span class="claude-token-label">${name} Token</span><div class="claude-token-amount"><strong>${formatTokens(row?.tokens)}</strong><span class="claude-token-cost">${finite(row?.cost_usd)&&row.cost_usd>=0?'$'+row.cost_usd.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):'—'}</span></div></div>`).join('')}</div>`;
+  }
   const activeAccount = data => (data.accounts || []).find(a=>a.id===data.active_account_id) || (data.accounts || []).find(a=>a.is_active);
   const mark = '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2v28M2 16h28M6 6l20 20M6 26 26 6M10 3l12 26M3 10l26 12M3 22 29 10M10 29 22 3"/></svg>';
   function reset(quota) {
@@ -43,7 +55,7 @@
   }
   function scene(accounts,data,offline,singleView=false,background='stand'){
     const count=accounts.length,decorated=['stand','thought','greeting','floral','celestial','atelier','botanical','paperland','glasswave'].includes(background);
-    return `<section class="claude-screen account-scene ${singleView?'claude-single':''} ${decorated?'account-scene-decorated':''}" data-count="${count}" aria-label="Claude ${singleView?'订阅':'多账号'}">${wallpaper(background)}<div class="account-content"><header class="claude-head"><h1>${mark}Claude ${singleView?'订阅':'多账号'}${!singleView?`<span>· ${count} 个</span>`:''}</h1>${data.accounts?.length>5&&!singleView?`<span>共 ${data.accounts.length} 个，显示 5 个</span>`:''}</header>${count?`<div class="account-cards">${accounts.map((a,i)=>accountCard(a,i,data,offline||data.stale===true)).join('')}</div>${singleView?models(accounts[0]):''}`:`<div class="claude-empty"><span aria-hidden="true">＋</span><h2>${singleView?'等待连接当前账号':'还没有可显示的账号'}</h2><p>连接账号服务后，显示 5h、7d 和 Fable 已使用额度。</p></div>`}</div></section>`;
+    return `<section class="claude-screen account-scene ${singleView?'claude-single':''} ${decorated?'account-scene-decorated':''}" data-count="${count}" aria-label="Claude ${singleView?'订阅':'多账号'}">${wallpaper(background)}<div class="account-content"><header class="claude-head ${singleView?'':'has-token-summary'}"><h1>${mark}Claude ${singleView?'订阅':'多账号'}</h1>${singleView?'':tokenSummary(data.token_usage)}</header>${count?`<div class="account-cards">${accounts.map((a,i)=>accountCard(a,i,data,offline||data.stale===true)).join('')}</div>${singleView?models(accounts[0]):''}`:`<div class="claude-empty"><span aria-hidden="true">＋</span><h2>${singleView?'等待连接当前账号':'还没有可显示的账号'}</h2><p>连接账号服务后，显示 5h、7d 和 Fable 已使用额度。</p></div>`}</div></section>`;
   }
   function single(data={},offline=false,background='stand'){
     const account=activeAccount(data);
@@ -55,5 +67,5 @@
     if(all.length>5&&active&&!accounts.includes(active))accounts[4]=active;
     return scene(accounts,data,offline,false,background);
   }
-  window.TurzxClaude={single,overview,used,remaining,reset,activeAccount};
+  window.TurzxClaude={single,overview,used,remaining,reset,activeAccount,formatTokens};
 })();

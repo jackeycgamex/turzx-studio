@@ -8,7 +8,7 @@
 
 单账号页同样包含 5h、7d、Fable 三个窗口，其他模型额度仅在来源返回有效值时显示已使用比例。背景使用用户选定的 v3 Claude 01 从容站姿，默认使用图片亮度 112%、色彩浓度 85%、淡化 12% 的浅亮处理，实体输出沿用用户确认的全局位置/色调校准和 BRG 色序。
 
-横屏 1 个账号使用大卡片，2–3 个账号并列，4–5 个账号使用行表；竖屏采用纵向卡片和底部人物构图。超过 5 个账号时显示前 5 个；当前账号若不在其中，则占用第 5 个位置，并显示总数。实现说明见 `design/designer-handoff/implementation.md`。图片来源和提示词见 `design/claude/character-brief.md`。
+横屏 1 个账号使用大卡片，2–3 个账号并列，4–5 个账号使用行表；竖屏采用纵向卡片和底部人物构图。超过 5 个账号时显示前 5 个；当前账号若不在其中，则占用第 5 个位置。标题不显示账号数量。实现说明见 `design/designer-handoff/implementation.md`。图片来源和提示词见 `design/claude/character-brief.md`。
 
 ## 使用
 
@@ -18,7 +18,7 @@ cswap 项目单独位于 `/Users/zhy/Github/cswap`。其调度服务负责账号
 
 ## 数据
 
-本项目只读取 cswap 生成的 `schedule-status.json`。macOS 默认路径为 `~/.claude-swap-backup/schedule-status.json`；Linux 使用 XDG 数据目录的 `claude-swap/schedule-status.json`。可通过 `TURZX_CSWAP_STATUS_PATH` 指定路径。
+账号额度读取 cswap 生成的 `schedule-status.json`。macOS 默认路径为 `~/.claude-swap-backup/schedule-status.json`；Linux 使用 XDG 数据目录的 `claude-swap/schedule-status.json`。可通过 `TURZX_CSWAP_STATUS_PATH` 指定路径。
 
 服务每 2 秒读取本地快照。手动刷新写入同目录的 `schedule-refresh.request`，由 cswap 执行网络读取。网络请求仍遵循 cswap 的限流和退避规则。
 
@@ -57,3 +57,13 @@ node tests/test_subscription_ui.cjs
 管理页「显示 → 背景图片」提供三张新版人物缩略图：01 从容站姿、02 侧望凝思、03 抬手相伴，以及纯色背景。点击后自动保存。Claude 订阅和 Claude 多账号共用选择，横竖屏自动适配。原有图片亮度、色彩浓度和淡化参数继续生效。
 
 `claude_background` 仅接受 `stand`、`thought`、`greeting`、`none`。旧配置默认使用 `stand`。OpenAI 背景独立保存，选择入口也在「显示 → 背景图片」。
+
+## 今日与本周 Token
+
+「Claude 多账号」标题旁显示今日和本周的 token 总量及等价美元，投屏与 macOS 账号面板使用相同统计。今日从 Asia/Shanghai 当日 00:00 开始，本周从周一 00:00 开始。这是日历周，不是账号的滚动 7d 额度窗口。
+
+统计范围是这台机器的 Claude Code 日志：`${CLAUDE_CONFIG_DIR:-~/.claude}/projects` 与 `~/.claude-swap-backup/sessions`。汇总各账号在本机留下的记录，不能补齐其他设备或已删除的日志。token 包含输入、输出、缓存写入与缓存读取。同一请求和消息的多段记录及文件副本只计一次。
+
+数量使用 K（10³）、M（10⁶）、B（10⁹）、T（10¹²），保留 1 位小数。美元保留 2 位小数。金额按模型标准 API token 单价折算，不是订阅费用或实际扣费；不包含工具请求费用、快速模式、批处理或地区定价差异。价格快照位于 `claude-token-pricing.json`，来源为 LiteLLM 公共价格表，并保存抓取时间与来源哈希。支持缓存时长和长上下文价差。未知模型保留 token，金额显示 `—`，不按零元处理。
+
+服务每 30 秒增量扫描日志。SQLite 缓存位于 `~/.cache/turzx/claude-token-usage.sqlite3`，仅保存文件游标、哈希化消息标识、时间、token 与金额，不保存对话正文。缺失日志目录时显示 `—`；可用目录无记录时显示零。读取失败时保留最近一次数值，悬停统计区可查看统计时间及未更新状态。查看页面不调用模型。
