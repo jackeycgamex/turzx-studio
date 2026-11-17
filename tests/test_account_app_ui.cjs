@@ -22,6 +22,7 @@ const base=process.env.ACCOUNT_APP_URL||'http://127.0.0.1:8766';
       }
       assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth||document.documentElement.scrollHeight>innerHeight),false);
       assert.equal(await page.locator('.claude-token-amount strong').allTextContents().then(x=>x.join(',')),'2.4B,3.4B');
+      assert.deepEqual(await page.locator('.claude-token-cost').allTextContents(),['$900','$1393']);
       assert(!/\d+\s*个/.test(await page.locator('.claude-head').innerText()));
       await page.screenshot({path:`runtime/account-app-validation/${w}x${h}.png`});
     }

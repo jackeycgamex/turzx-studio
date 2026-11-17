@@ -41,7 +41,7 @@ def main():
         plistlib.dump({'CFBundleIdentifier': 'local.turzx.claude-account-panel',
                       'CFBundleName': 'Claude 账号面板', 'CFBundleDisplayName': 'Claude 账号面板',
                       'CFBundleExecutable': 'ClaudeAccountPanel', 'CFBundlePackageType': 'APPL',
-                      'CFBundleShortVersionString': '1.0', 'CFBundleVersion': '5', 'CFBundleIconFile': 'AccountPanel',
+                      'CFBundleShortVersionString': '1.0', 'CFBundleVersion': '6', 'CFBundleIconFile': 'AccountPanel',
                       'NSHighResolutionCapable': True,
                       'NSAppTransportSecurity': {'NSAllowsLocalNetworking': True}}, stream)
     subprocess.run(['swiftc', str(ROOT/'macos'/'AccountApp.swift'), '-o', str(executable),

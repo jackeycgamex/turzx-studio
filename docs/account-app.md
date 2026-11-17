@@ -56,4 +56,4 @@ node tests/test_account_app_parity.cjs
 
 图标矢量源文件为 `web/assets/account-panel.svg`。macOS 图标为 `macos/AccountPanel.icns`，原始 PNG 为 `macos/AccountPanel.png`。构建脚本自动复制图标并设置 `CFBundleIconFile`。
 
-2026-11-17 构建号 5 同步今日与本周 token / 等价美元汇总，并移除标题中的账号数量。安装包包含统计模块和价格快照，数据口径见 [Claude 使用统计](claude-cswap.md#今日与本周-token)。更新后须重建并替换已安装 App。
+2026-11-17 构建号 6 同步今日与本周 token / 等价美元汇总，并移除标题中的账号数量。美元四舍五入为整数，不显示千位逗号、小数部分或近似符号。安装包包含统计模块和价格快照，数据口径见 [Claude 使用统计](claude-cswap.md#今日与本周-token)。更新后须重建并替换已安装 App。
