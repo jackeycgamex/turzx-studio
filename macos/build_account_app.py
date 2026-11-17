@@ -25,7 +25,7 @@ def main():
     executable = contents/'MacOS'/'ClaudeAccountPanel'
     resources.mkdir(parents=True)
     executable.parent.mkdir()
-    for name in ('account_app.py', 'claude_subscription.py'):
+    for name in ('account_app.py', 'claude_subscription.py', 'claude_token_usage.py', 'claude-token-pricing.json'):
         shutil.copy2(ROOT/name, resources/name)
     shutil.copy2(ROOT/'macos'/'AccountPanel.icns', resources/'AccountPanel.icns')
     web = resources/'web'
@@ -41,7 +41,7 @@ def main():
         plistlib.dump({'CFBundleIdentifier': 'local.turzx.claude-account-panel',
                       'CFBundleName': 'Claude 账号面板', 'CFBundleDisplayName': 'Claude 账号面板',
                       'CFBundleExecutable': 'ClaudeAccountPanel', 'CFBundlePackageType': 'APPL',
-                      'CFBundleShortVersionString': '1.0', 'CFBundleVersion': '3', 'CFBundleIconFile': 'AccountPanel',
+                      'CFBundleShortVersionString': '1.0', 'CFBundleVersion': '5', 'CFBundleIconFile': 'AccountPanel',
                       'NSHighResolutionCapable': True,
                       'NSAppTransportSecurity': {'NSAllowsLocalNetworking': True}}, stream)
     subprocess.run(['swiftc', str(ROOT/'macos'/'AccountApp.swift'), '-o', str(executable),

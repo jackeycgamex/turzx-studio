@@ -7,7 +7,7 @@ const base=process.env.ACCOUNT_APP_URL||'http://127.0.0.1:8766';
   try{
     const page=await browser.newPage();
     const errors=[];page.on('pageerror',e=>errors.push(e.message));
-    let state={style:{claude_background:'thought',image_brightness:112,image_saturation:85,image_fade:12},busy:false,claude:{status:'ok',stale:false,active_account_id:'2',accounts:Array.from({length:3},(_,i)=>({id:String(i+1),label:['jackey2','jackey','账号 3'][i],status:'ok',updated_at:Date.now()/1000,subscription_type:'Max',usage:{five_hour:{utilization:20+i*10,resets_at:Date.now()/1000+7200},seven_day:{utilization:44,resets_at:Date.now()/1000+86400},seven_day_fable:{utilization:12,resets_at:Date.now()/1000+90000}}}))}};
+    let state={style:{claude_background:'thought',image_brightness:112,image_saturation:85,image_fade:12},busy:false,claude:{status:'ok',stale:false,token_usage:{status:'ok',today:{tokens:2362441260,cost_usd:899.53285},week:{tokens:3428385686,cost_usd:1392.562672}},active_account_id:'2',accounts:Array.from({length:3},(_,i)=>({id:String(i+1),label:['jackey2','jackey','账号 3'][i],status:'ok',updated_at:Date.now()/1000,subscription_type:'Max',usage:{five_hour:{utilization:20+i*10,resets_at:Date.now()/1000+7200},seven_day:{utilization:44,resets_at:Date.now()/1000+86400},seven_day_fable:{utilization:12,resets_at:Date.now()/1000+90000}}}))}};
     await page.route('**/api/session',r=>r.fulfill({json:{token:'test'}}));
     await page.route('**/api/app-state',r=>r.fulfill({json:state}));
     let requests=0,release;
@@ -21,6 +21,8 @@ const base=process.env.ACCOUNT_APP_URL||'http://127.0.0.1:8766';
         assert(box.width>=44&&box.height>=44);
       }
       assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth||document.documentElement.scrollHeight>innerHeight),false);
+      assert.equal(await page.locator('.claude-token-amount strong').allTextContents().then(x=>x.join(',')),'2.4B,3.4B');
+      assert(!/\d+\s*个/.test(await page.locator('.claude-head').innerText()));
       await page.screenshot({path:`runtime/account-app-validation/${w}x${h}.png`});
     }
     await page.getByRole('button',{name:'切换到账号 3',exact:true}).click();

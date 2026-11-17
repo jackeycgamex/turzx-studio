@@ -5,7 +5,7 @@ const appURL=process.env.ACCOUNT_APP_URL||'http://127.0.0.1:8766';
 const screenURL=process.env.SCREEN_URL||'http://127.0.0.1:8765';
 const now=1794807000000;
 (async()=>{
-  const browser=await chromium.launch({channel:'chrome',headless:true});
+  const browser=await chromium.launch({channel:'chrome',headless:true,args:['--disable-gpu']});
   try{
     const screen=await browser.newPage(),app=await browser.newPage();
     const errors=[];
@@ -25,11 +25,15 @@ const now=1794807000000;
     let checked=0;
     for(const [width,height] of [[1280,720],[720,1280]]){
       for(const {count,background} of scenarios){
-        state={page:'cswap',claude_background:background,image_brightness:108,image_saturation:94,image_fade:0,claude:{status:'ok',stale:false,active_account_id:'2',accounts:Array.from({length:count},(_,i)=>({id:String(i+1),label:`账号 ${i+1}`,status:'ok',updated_at:now/1000,subscription_type:'Max',usage:{five_hour:{utilization:20+i*10,resets_at:now/1000+7200},seven_day:{utilization:44,resets_at:now/1000+86400},seven_day_fable:{utilization:12,resets_at:now/1000+90000}}}))}};
+        state={page:'cswap',claude_background:background,image_brightness:108,image_saturation:94,image_fade:0,claude:{status:'ok',stale:false,token_usage:{status:'ok',today:{tokens:2362441260,cost_usd:899.53285},week:{tokens:3428385686,cost_usd:1392.562672}},active_account_id:'2',accounts:Array.from({length:count},(_,i)=>({id:String(i+1),label:`账号 ${i+1}`,status:'ok',updated_at:now/1000,subscription_type:'Max',usage:{five_hour:{utilization:20+i*10,resets_at:now/1000+7200},seven_day:{utilization:44,resets_at:now/1000+86400},seven_day_fable:{utilization:12,resets_at:now/1000+90000}}}))}};
         for(const [page,url] of [[screen,screenURL+'/display.html?page=cswap'],[app,appURL]]){
           await page.setViewportSize({width,height});
           await page.goto(url);
           await page.waitForSelector(`.account-scene[data-count="${count}"]`);
+          assert.equal(await page.locator('.claude-token-summary').count(),1);
+          assert(!/\d+\s*个/.test(await page.locator('.claude-head').innerText()));
+          const overflowing=await page.locator('.claude-token-summary').evaluate(e=>[e,...e.querySelectorAll('*')].filter(x=>x.scrollWidth>x.clientWidth+2).map(x=>x.className));
+          assert.deepEqual(overflowing,[]);
           await page.evaluate(async()=>{await document.fonts.ready;await Promise.all([...document.querySelectorAll('.account-wallpaper img')].map(img=>img.decode()));});
         }
         await app.addStyleTag({content:'#feedback{visibility:hidden}'});
