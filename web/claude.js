@@ -18,7 +18,7 @@
     const groups=[['今日',usage?.today],['本周',usage?.week]];
     const updated=finite(usage?.updated_at)?new Date(usage.updated_at*1000).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai'}):'';
     const freshness=usage?.status==='ok'?'': '；统计暂未更新';
-    return `<div class="claude-token-summary" aria-label="本机 Claude 使用统计" title="本机 Claude Code 使用记录；含输入、输出与缓存；本周从周一开始；金额按标准 API token 价格折算${updated?`；统计时间 ${safe(updated)}`:''}${freshness}">${groups.map(([name,row])=>`<div class="claude-token-period"><span class="claude-token-label">${name} Token</span><div class="claude-token-amount"><strong>${formatTokens(row?.tokens)}</strong><span class="claude-token-cost">${finite(row?.cost_usd)&&row.cost_usd>=0?'$'+row.cost_usd.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):'—'}</span></div></div>`).join('')}</div>`;
+    return `<div class="claude-token-summary" aria-label="本机 Claude 使用统计" title="本机 Claude Code 使用记录；含输入、输出与缓存；本周从周一开始；金额按标准 API token 价格折算${updated?`；统计时间 ${safe(updated)}`:''}${freshness}">${groups.map(([name,row])=>`<div class="claude-token-period"><span class="claude-token-label">${name} Token</span><div class="claude-token-amount"><strong>${formatTokens(row?.tokens)}</strong><span class="claude-token-cost">${finite(row?.cost_usd)&&row.cost_usd>=0?'$'+row.cost_usd.toLocaleString('en-US',{useGrouping:false,maximumFractionDigits:0}):'—'}</span></div></div>`).join('')}</div>`;
   }
   const activeAccount = data => (data.accounts || []).find(a=>a.id===data.active_account_id) || (data.accounts || []).find(a=>a.is_active);
   const mark = '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2v28M2 16h28M6 6l20 20M6 26 26 6M10 3l12 26M3 10l26 12M3 22 29 10M10 29 22 3"/></svg>';

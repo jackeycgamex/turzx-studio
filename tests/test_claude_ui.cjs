@@ -70,7 +70,7 @@ const withTokens={...data,token_usage:{status:'ok',updated_at:now,today:{tokens:
 const summary=overview(withTokens);
 assert.doesNotMatch(summary,/≈/);
 assert.match(summary,/今日 Token/);assert.match(summary,/本周 Token/);
-for(const value of ['2.4B','3.4B','$899.53','$1,392.56'])assert.ok(summary.includes(value));
+for(const value of ['2.4B','3.4B','$900','$1393'])assert.ok(summary.includes(value));
 assert.doesNotMatch(single(withTokens),/claude-token-summary/);
 for(const rendered of [summary,many,overview({})])assert.doesNotMatch(rendered.replace(/<[^>]*>/g,''),/\d+\s*个/);
 assert.doesNotMatch(overview({token_usage:{today:{tokens:1234,cost_usd:null},week:null}}),/\$0|NaN|undefined/);
