@@ -3,7 +3,7 @@ const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 const fixed=Date.now();class FixedDate extends Date{static now(){return fixed;}}
 const sandbox={window:{},Intl,Date:FixedDate};
 vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../web/claude.js'),'utf8'),sandbox);
-const {single,overview,used,remaining,reset,activeAccount}=sandbox.window.TurzxClaude;
+const {single,overview,used,remaining,reset,activeAccount,formatTokens}=sandbox.window.TurzxClaude;
 const now=fixed/1000;
 const account=(id,utilization)=>({id,label:`账号 ${id}`,email:`a•••${id}@example.com`,subscription_type:'Max',updated_at:now,status:'live',slot:{start:'07:00',end:'12:00'},usage:{five_hour:{utilization,resets_at:now+3600},seven_day:{utilization:43,resets_at:now+86400},seven_day_fable:{utilization:12.5,resets_at:now+90000}}});
 const data={accounts:[account('a',99),account('b',30),account('c',0)],active_account_id:'b',status:'live'};
@@ -63,3 +63,15 @@ for(const render of [single,overview]){
  assert.doesNotMatch(render(data,false,'none'),/account-wallpaper/);
  assert.match(render(data,false,'__proto__'),/claude-v3-decorated-stand-landscape.png/);
 }
+
+for(const [value,expected] of [[0,'0.0K'],[846,'0.8K'],[1550,'1.6K'],[1234567,'1.2M'],[2362441260,'2.4B'],[3456789012345,'3.5T']])assert.equal(formatTokens(value),expected);
+for(const value of [null,undefined,'123',NaN,Infinity,-1])assert.equal(formatTokens(value),'—');
+const withTokens={...data,token_usage:{status:'ok',updated_at:now,today:{tokens:2362441260,cost_usd:899.53285},week:{tokens:3428385686,cost_usd:1392.562672}}};
+const summary=overview(withTokens);
+assert.doesNotMatch(summary,/≈/);
+assert.match(summary,/今日 Token/);assert.match(summary,/本周 Token/);
+for(const value of ['2.4B','3.4B','$899.53','$1,392.56'])assert.ok(summary.includes(value));
+assert.doesNotMatch(single(withTokens),/claude-token-summary/);
+for(const rendered of [summary,many,overview({})])assert.doesNotMatch(rendered.replace(/<[^>]*>/g,''),/\d+\s*个/);
+assert.doesNotMatch(overview({token_usage:{today:{tokens:1234,cost_usd:null},week:null}}),/\$0|NaN|undefined/);
+console.log('Token summary passed: daily/weekly amounts, K/M/B/T with one decimal, missing data and no account count.');

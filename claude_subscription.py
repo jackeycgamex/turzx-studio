@@ -16,6 +16,7 @@ import re
 import sys
 import threading
 import time
+from claude_token_usage import ClaudeTokenUsage
 
 POLL_SECONDS = 2
 STALE_SECONDS = 300
@@ -192,6 +193,7 @@ class ClaudeMonitor:
         self.wake = threading.Event()
         self.thread = None
         self.data = normalize_snapshot({"accounts": []})
+        self.token_usage = ClaudeTokenUsage(clock=clock)
         self.read_error = "cswap 调度数据尚未就绪。"
         self.refresh_error = None
         if autostart:
@@ -220,6 +222,7 @@ class ClaudeMonitor:
     def _run(self):
         while not self.stopping.is_set():
             self._read_once()
+            self.token_usage.refresh_if_due()
             self.wake.wait(self.poll_seconds)
             self.wake.clear()
 
@@ -244,6 +247,7 @@ class ClaudeMonitor:
             result = copy.deepcopy(self.data)
             read_error, refresh_error = self.read_error, self.refresh_error
         now = self.clock()
+        result["token_usage"] = self.token_usage.snapshot()
         sampled = result["updated_at"]
         result["stale"] = bool(read_error) or sampled is None or not -30 <= now - sampled <= self.stale_seconds
         result["error"] = refresh_error or read_error

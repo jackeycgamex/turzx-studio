@@ -77,3 +77,19 @@
  .account-scene[data-count="1"] .claude-quota{grid-template-rows:25px 22px 54px 6px 26px}
  .account-scene[data-count="0"] .claude-empty{background:rgba(255,252,248,.92);padding:24px;border-radius:18px;margin-top:20px}
 }
+
+.claude-head.has-token-summary{height:48px;gap:24px}
+.claude-token-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px;min-width:0;margin-left:auto}
+.claude-token-period{min-width:0;padding-left:18px;border-left:1px solid var(--cl-line)}
+.claude-token-label{display:block;color:var(--cl-muted);font-size:14px;line-height:18px;font-weight:500}
+.claude-token-amount{display:flex;align-items:baseline;gap:10px;white-space:nowrap;line-height:26px}
+.claude-token-amount strong{font-size:20px;font-weight:600;color:var(--cl-accent)}
+.claude-token-cost{font-size:15px;color:var(--cl-muted)}
+@media(max-aspect-ratio:1/1){
+ .claude-head.has-token-summary{height:auto;min-height:48px;flex-wrap:wrap;gap:12px 18px}
+ .claude-token-summary{gap:16px}
+ .claude-token-period{padding-left:12px}
+ .claude-token-amount{gap:7px}
+ .claude-token-amount strong{font-size:18px}
+ .claude-token-cost{font-size:14px}
+}
